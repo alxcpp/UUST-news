@@ -74,11 +74,15 @@ flask --app app run
 ## Структура проекта
 
 ```text
-app.py                 Flask-маршруты, авторизация, роли и SQLite
-templates/             HTML-шаблоны страниц
-static/styles.css      Адаптивные стили
-instance/              Локальная база данных (создаётся автоматически)
-instance/uploads/      Загруженные изображения (не попадают в Git)
+app.py                       Конфигурация Flask и HTTP-маршруты
+news_portal/database.py      SQLite, миграции и демо-данные
+news_portal/security.py      Авторизация, роли, CSRF и шаблонные фильтры
+news_portal/uploads.py       Проверка, хранение и доступ к изображениям
+news_portal/gemini.py        Проверка текста через Gemini API
+templates/                   Jinja-шаблоны страниц
+static/styles.css            Адаптивные стили
+instance/                    Локальная SQLite-база данных
+instance/uploads/            Загруженные изображения, исключённые из Git
 ```
 
 Это учебная локальная версия. Перед публичным размещением настройте постоянный `SECRET_KEY`, смените начальный пароль, включите HTTPS и добавьте ограничения частоты запросов и резервное копирование базы.

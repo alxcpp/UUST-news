@@ -1,5 +1,9 @@
 {% extends "base.html" %}
 {% block title %}{{ code }} — УУНиТ{% endblock %}
 {% block content %}
-<section class="error-page"><p class="eyebrow">Ошибка {{ code }}</p><h1>{{ message }}</h1><a class="button button-red" href="{{ url_for('index') }}">Вернуться к новостям ↗</a></section>
+  <section class="error-page">
+    <p class="eyebrow">Ошибка {{ code }}</p>
+    <h1>{{ message }}</h1>
+    <a class="button button-red" href="{{ url_for('index') }}">Вернуться к новостям ↗</a>
+  </section>
 {% endblock %}
