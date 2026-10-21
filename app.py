@@ -10,7 +10,8 @@ from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from flask import Flask, abort, flash, g, redirect, render_template, request, session, url_for
+from flask import Flask, abort, flash, g, redirect, render_template, request, send_from_directory, session, url_for
+from PIL import Image, ImageOps, UnidentifiedImageError
 from werkzeug.security import check_password_hash, generate_password_hash
 
 
@@ -22,6 +23,8 @@ app = Flask(__name__)
 app.config.update(
     SECRET_KEY=os.environ.get("SECRET_KEY", "local-development-key-change-before-deploying"),
     DATABASE=os.environ.get("DATABASE", str(INSTANCE_DIR / "uust_news.db")),
+    MAX_CONTENT_LENGTH=9 * 1024 * 1024,
+    UPLOAD_FOLDER=str(INSTANCE_DIR / "uploads"),
     GEMINI_API_KEY=os.environ.get("GEMINI_API_KEY", ""),
     GEMINI_MODEL=os.environ.get("GEMINI_MODEL", "gemini-3.8-flash"),
     GEMINI_FALLBACK_MODELS=os.environ.get(
@@ -42,6 +45,73 @@ def get_db():
         g.db.row_factory = sqlite3.Row
         g.db.execute("PRAGMA foreign_keys = ON")
     return g.db
+
+
+def save_uploaded_image(upload):
+    if upload is None or not upload.filename:
+        return "", None
+
+    destination = None
+    try:
+        upload.stream.seek(0, os.SEEK_END)
+        file_size = upload.stream.tell()
+        upload.stream.seek(0)
+        if file_size > 8 * 1024 * 1024:
+            return None, "Изображение должно быть не больше 8 МБ."
+
+        with Image.open(upload.stream) as source:
+            image_format = source.format
+            if image_format not in {"JPEG", "PNG", "WEBP"}:
+                return None, "Поддерживаются изображения JPG, PNG и WEBP."
+            if source.width * source.height > 20_000_000:
+                return None, "Размеры изображения слишком велики."
+            if getattr(source, "n_frames", 1) > 1:
+                return None, "Загрузите статичное изображение, не анимацию."
+            source.verify()
+
+        upload.stream.seek(0)
+        with Image.open(upload.stream) as source:
+            image = ImageOps.exif_transpose(source)
+            if image_format == "JPEG" and image.mode != "RGB":
+                image = image.convert("RGB")
+            elif image_format == "PNG" and image.mode not in {"1", "L", "LA", "P", "RGB", "RGBA"}:
+                image = image.convert("RGBA")
+            elif image_format == "WEBP" and image.mode not in {"RGB", "RGBA"}:
+                image = image.convert("RGBA" if "A" in image.getbands() else "RGB")
+
+            extension = {"JPEG": "jpg", "PNG": "png", "WEBP": "webp"}[image_format]
+            filename = f"{secrets.token_hex(16)}.{extension}"
+            upload_folder = Path(app.config["UPLOAD_FOLDER"])
+            upload_folder.mkdir(parents=True, exist_ok=True)
+            destination = upload_folder / filename
+            image.save(destination, format=image_format)
+        return url_for("uploaded_image", filename=filename), None
+    except (Image.DecompressionBombError, UnidentifiedImageError, OSError, ValueError):
+        if destination is not None:
+            destination.unlink(missing_ok=True)
+        return None, "Не удалось прочитать изображение. Загрузите корректный JPG, PNG или WEBP."
+
+
+@app.get("/uploads/<filename>")
+def uploaded_image(filename):
+    extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    stem = filename.rsplit(".", 1)[0] if "." in filename else ""
+    if extension not in {"jpg", "png", "webp"} or len(stem) != 32 or any(
+        character not in "0123456789abcdef" for character in stem
+    ):
+        abort(404)
+
+    images = get_db().execute(
+        "SELECT status FROM news WHERE image_url LIKE ?",
+        (f"%/uploads/{filename}",),
+    ).fetchall()
+    if not images:
+        abort(404)
+    if not any(image["status"] == "published" for image in images):
+        user = current_user()
+        if user is None or user["role"] not in {"moderator", "admin"}:
+            abort(404)
+    return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
 
 
 @app.teardown_appcontext
@@ -481,12 +551,10 @@ def submit_proposal():
     excerpt = request.form.get("excerpt", "").strip()
     content = request.form.get("content", "").strip()
     category = request.form.get("category", "Университет").strip()
-    image_url = request.form.get("image_url", "").strip()
     content_type = request.form.get("content_type", "article")
     event_date = request.form.get("event_date", "").strip()
     event_location = request.form.get("event_location", "").strip()
     allowed_categories = {"Университет", "Наука", "Студентам", "Кампус", "Мероприятия"}
-    valid_image = not image_url or image_url.startswith(("https://", "http://"))
     valid_type = content_type in {"article", "event"}
     valid_event = True
     if content_type == "event":
@@ -499,9 +567,13 @@ def submit_proposal():
         flash("Заполните заголовок, краткое описание и текст новости.", "error")
     elif not valid_type or not valid_event:
         flash("Для мероприятия укажите корректные дату и место проведения.", "error")
-    elif category not in allowed_categories or not valid_image:
-        flash("Проверьте категорию и ссылку на изображение.", "error")
+    elif category not in allowed_categories:
+        flash("Проверьте выбранный раздел.", "error")
     else:
+        image_url, image_error = save_uploaded_image(request.files.get("image_file"))
+        if image_error:
+            flash(image_error, "error")
+            return redirect(url_for("index"))
         db = get_db()
         grammar_result = check_text(title, excerpt, content)
         db.execute(
@@ -645,10 +717,10 @@ def moderation():
 def edit_proposal(news_id):
     db = get_db()
     proposal = db.execute(
-        "SELECT * FROM news WHERE id = ? AND status = 'pending'",
+        "SELECT * FROM news WHERE id = ? AND status IN ('pending', 'published')",
         (news_id,),
     ).fetchone()
-    if proposal is None:
+    if proposal is None or (proposal["status"] == "published" and current_user()["role"] != "admin"):
         abort(404)
 
     if request.method == "POST":
@@ -656,13 +728,11 @@ def edit_proposal(news_id):
         excerpt = request.form.get("excerpt", "").strip()
         content = request.form.get("content", "").strip()
         category = request.form.get("category", "").strip()
-        image_url = request.form.get("image_url", "").strip()
         content_type = request.form.get("content_type", proposal["content_type"])
         event_date = request.form.get("event_date", "").strip()
         event_location = request.form.get("event_location", "").strip()
         allowed_categories = {"Университет", "Наука", "Студентам", "Кампус", "Мероприятия"}
         valid_text = 4 <= len(title) <= 150 and 10 <= len(excerpt) <= 260 and 30 <= len(content) <= 8000
-        valid_image = not image_url or image_url.startswith(("https://", "http://"))
         valid_type = content_type in {"article", "event"}
         valid_event = True
         if content_type == "event":
@@ -675,14 +745,21 @@ def edit_proposal(news_id):
             flash("Проверьте заголовок, краткое описание и текст новости.", "error")
         elif not valid_type or not valid_event:
             flash("Для мероприятия укажите корректные дату и место проведения.", "error")
-        elif category not in allowed_categories or not valid_image:
-            flash("Проверьте категорию и ссылку на изображение.", "error")
+        elif category not in allowed_categories:
+            flash("Проверьте выбранный раздел.", "error")
         else:
+            image_url = proposal["image_url"]
+            uploaded_image = request.files.get("image_file")
+            if uploaded_image and uploaded_image.filename:
+                image_url, image_error = save_uploaded_image(uploaded_image)
+                if image_error:
+                    flash(image_error, "error")
+                    return render_template("proposal_edit.html", article=proposal, values=request.form), 400
             grammar_result = check_text(title, excerpt, content)
             cursor = db.execute(
                 """UPDATE news SET title = ?, excerpt = ?, content = ?, category = ?, image_url = ?,
                    content_type = ?, event_date = ?, event_location = ?, grammar_result = ?
-                   WHERE id = ? AND status = 'pending'""",
+                   WHERE id = ? AND status = ?""",
                 (
                     title,
                     excerpt,
@@ -694,13 +771,18 @@ def edit_proposal(news_id):
                     event_location if content_type == "event" else None,
                     json.dumps(grammar_result, ensure_ascii=False),
                     news_id,
+                    proposal["status"],
                 ),
             )
             db.commit()
             if cursor.rowcount:
-                flash("Предложение обновлено. Результат проверки грамматики обновлён.", "success")
+                flash(
+                    "Опубликованная новость обновлена." if proposal["status"] == "published"
+                    else "Предложение обновлено. Результат проверки грамматики обновлён.",
+                    "success",
+                )
             else:
-                flash("Предложение уже обработано и больше не доступно для редактирования.", "info")
+                flash("Новость уже изменилась и больше недоступна для редактирования.", "info")
             return redirect(url_for("moderation"))
         return render_template("proposal_edit.html", article=proposal, values=request.form)
 
@@ -765,6 +847,11 @@ def forbidden(_error):
 @app.errorhandler(404)
 def not_found(_error):
     return render_template("error.html", code=404, message="Похоже, этой страницы больше нет."), 404
+
+
+@app.errorhandler(413)
+def upload_too_large(_error):
+    return render_template("error.html", code=413, message="Размер отправленной формы превышает допустимый лимит. Максимальный размер изображения — 8 МБ."), 413
 
 
 init_db()

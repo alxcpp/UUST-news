@@ -157,6 +157,8 @@ h1, h2, h3, p { margin-top: 0; }
 .proposal-form input, .proposal-form textarea, .proposal-form select, .stack-form input, .comment-form textarea, .role-form select { width: 100%; min-height: 42px; padding: 10px 12px; border: 1px solid #dedad6; border-radius: 1px; outline: none; color: var(--ink); background: white; font-size: 12px; font-weight: 400; resize: vertical; }
 .proposal-form input:focus, .proposal-form textarea:focus, .proposal-form select:focus, .stack-form input:focus, .comment-form textarea:focus { border-color: var(--red); box-shadow: 0 0 0 2px rgba(164,22,42,.09); }
 .proposal-form textarea { min-height: 76px; }
+.proposal-form input[type="file"] { padding: 7px; }
+.proposal-form input[type="file"]::file-selector-button { margin-right: 10px; padding: 7px 10px; border: 0; color: var(--ink); background: var(--paper); font: inherit; cursor: pointer; }
 .form-row { display: grid; grid-template-columns: .8fr 1.2fr; gap: 16px; }
 .form-row[hidden] { display: none; }
 .optional { color: #99928c; font-size: 9px; font-weight: 400; }
@@ -303,7 +305,8 @@ h1, h2, h3, p { margin-top: 0; }
 .published-row > div { display: grid; gap: 3px; }
 .published-row strong { font-size: 11px; }
 .published-row span { color: var(--muted); font-size: 9px; }
-.published-row form { flex: 0 0 auto; }
+.published-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 12px; }
+.published-actions form { flex: 0 0 auto; }
 .danger-link { color: #a54242; border: 0; background: transparent; }
 .error-page { display: grid; min-height: 60vh; align-content: center; justify-items: start; width: min(700px, calc(100% - 48px)); margin: 0 auto; }
 .error-page h1 { max-width: 600px; margin-bottom: 25px; font-family: var(--display); font-size: 39px; letter-spacing: -.04em; }
@@ -472,7 +475,8 @@ html[data-theme="dark"] .semantic-category { background: #211d28; }
   .review-actions form { flex: 1; }
   .review-actions .button { width: 100%; padding: 0 8px; font-size: 9px; }
   .user-table { min-width: 600px; }
-  .published-row { align-items: flex-start; }
+  .published-row { align-items: flex-start; flex-direction: column; gap: 10px; }
+  .published-actions { align-self: flex-end; }
   .published-row strong { max-width: 225px; }
   .error-page h1 { font-size: 30px; }
 }

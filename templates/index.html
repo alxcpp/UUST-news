@@ -80,7 +80,7 @@
 
 {% if current_user %}
 <dialog class="proposal-dialog" id="proposal-dialog">
-  <form action="{{ url_for('submit_proposal') }}" method="post" class="proposal-form">
+  <form action="{{ url_for('submit_proposal') }}" method="post" enctype="multipart/form-data" class="proposal-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="dialog-heading"><div><p class="eyebrow">Предложение редакции</p><h2>Новая публикация</h2></div><button class="icon-close" type="button" aria-label="Закрыть" data-dialog-close>×</button></div>
     <label>Тип публикации<select name="content_type"><option value="article">Статья</option><option value="event">Мероприятие</option></select></label>
@@ -93,7 +93,7 @@
     </div>
     <div class="form-row">
       <label>Раздел<select name="category"><option>Университет</option><option>Наука</option><option>Студентам</option><option>Кампус</option><option>Мероприятия</option></select></label>
-      <label>Ссылка на фото <span class="optional">необязательно</span><input name="image_url" type="url" placeholder="https://"></label>
+      <label>Фотография <span class="optional">JPG, PNG или WEBP, до 8 МБ</span><input name="image_file" type="file" accept="image/jpeg,image/png,image/webp"></label>
     </div>
     <div class="dialog-actions proposal-submit-actions"><span>Для автоматической проверки текст передаётся в Gemini API по HTTPS.</span><button class="button button-red" type="submit">Отправить на проверку <span aria-hidden="true">↗</span></button></div>
   </form>

@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Редактировать предложение — УУНиТ{% endblock %}
+{% block title %}Редактировать {{ 'новость' if article['status'] == 'published' else 'предложение' }} — УУНиТ{% endblock %}
 {% block content %}
 <section class="proposal-edit-page">
   <a class="back-link" href="{{ url_for('moderation') }}">← <span>К очереди модерации</span></a>
-  <form action="{{ url_for('edit_proposal', news_id=article['id']) }}" method="post" class="proposal-form proposal-edit-form">
+  <form action="{{ url_for('edit_proposal', news_id=article['id']) }}" method="post" enctype="multipart/form-data" class="proposal-form proposal-edit-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="dialog-heading"><div><p class="eyebrow">Предложение на проверке</p><h1>Редактировать публикацию</h1></div><button class="button button-quiet button-small" type="button" data-dialog-open="grammar-window">Вариант исправлений</button></div>
+    <div class="dialog-heading"><div><p class="eyebrow">{{ 'Опубликованная новость' if article['status'] == 'published' else 'Предложение на проверке' }}</p><h1>Редактировать публикацию</h1></div><button class="button button-quiet button-small" type="button" data-dialog-open="grammar-window">Вариант исправлений</button></div>
     <label>Тип публикации<select name="content_type"><option value="article" {% if values.get('content_type', article['content_type']) == 'article' %}selected{% endif %}>Статья</option><option value="event" {% if values.get('content_type', article['content_type']) == 'event' %}selected{% endif %}>Мероприятие</option></select></label>
     <label>Заголовок<input name="title" maxlength="150" minlength="4" required value="{{ values.get('title', article['title']) }}"></label>
     <label>Краткое описание<textarea name="excerpt" rows="3" maxlength="260" minlength="10" required>{{ values.get('excerpt', article['excerpt']) }}</textarea></label>
@@ -20,9 +20,9 @@
           <option value="{{ category }}" {% if values.get('category', article['category']) == category %}selected{% endif %}>{{ category }}</option>
         {% endfor %}
       </select></label>
-      <label>Ссылка на фото <span class="optional">необязательно</span><input name="image_url" type="url" value="{{ values.get('image_url', article['image_url']) }}" placeholder="https://"></label>
+      <label>Фотография <span class="optional">JPG, PNG или WEBP, до 8 МБ</span><input name="image_file" type="file" accept="image/jpeg,image/png,image/webp">{% if article['image_url'] %}<span class="optional">Текущее изображение сохранится, если не выбрать новое.</span>{% endif %}</label>
     </div>
-    <div class="dialog-actions"><span>Правки сохранятся в предложении до решения редакции</span><div class="review-actions"><a class="button button-quiet" href="{{ url_for('moderation') }}">Отмена</a><button class="button button-red" type="submit">Сохранить изменения ↗</button></div></div>
+    <div class="dialog-actions"><span>{{ 'Изменения сразу появятся на сайте' if article['status'] == 'published' else 'Правки сохранятся в предложении до решения редакции' }}</span><div class="review-actions"><a class="button button-quiet" href="{{ url_for('moderation') }}">Отмена</a><button class="button button-red" type="submit">{{ 'Сохранить новость ↗' if article['status'] == 'published' else 'Сохранить изменения ↗' }}</button></div></div>
   </form>
   {% set grammar = article['grammar_result']|from_json %}
   <dialog class="grammar-window" id="grammar-window">

@@ -3,4 +3,5 @@ __pycache__/
 *.py[cod]
 instance/*.db
 instance/*.db-*
+instance/uploads/
 .env
