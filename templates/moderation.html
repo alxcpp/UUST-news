@@ -10,9 +10,13 @@
   {% if pending %}
     <div class="pending-list">
       {% for item in pending %}
-        <article class="pending-item">
-          <div class="pending-top"><div class="story-meta"><span>{{ 'Мероприятие' if item['content_type'] == 'event' else item['category'] }}</span><span>{{ item['created_at']|date_ru }}</span></div><span class="status-label">На проверке</span></div>
-          <h3>{{ item['title'] }}</h3><p class="pending-excerpt">{{ item['excerpt'] }}</p><p class="pending-content">{{ item['content'] }}</p>
+        <details class="pending-item">
+          <summary class="pending-top">
+            <span class="pending-summary-copy"><span class="story-meta"><span>{{ 'Мероприятие' if item['content_type'] == 'event' else item['category'] }}</span><span>{{ item['created_at']|date_ru }}</span></span><span class="pending-summary-title">{{ item['title'] }}</span></span>
+            <span class="pending-summary-end"><span class="status-label">На проверке</span><span class="pending-toggle" aria-hidden="true"></span></span>
+          </summary>
+          <div class="pending-detail">
+          <p class="pending-excerpt">{{ item['excerpt'] }}</p><p class="pending-content">{{ item['content'] }}</p>
           {% if item['content_type'] == 'event' %}<p class="event-details"><strong>Дата:</strong> {{ item['event_date']|date_ru }} <span>·</span> <strong>Место:</strong> {{ item['event_location'] }}</p>{% endif %}
           {% set report = item['grammar_result']|from_json %}
           {% set semantic = report.get('semantic') if report else none %}
@@ -40,7 +44,8 @@
             <form action="{{ url_for('review_proposal', news_id=item['id'], action='reject') }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="button button-quiet button-small" type="submit">Отклонить</button></form>
             <form action="{{ url_for('review_proposal', news_id=item['id'], action='approve') }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="button button-red button-small" type="submit">Опубликовать ↗</button></form>
           </div></div>
-        </article>
+          </div>
+        </details>
       {% endfor %}
     </div>
   {% else %}
