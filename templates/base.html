@@ -78,6 +78,16 @@
     document.querySelectorAll('[data-dialog-close]').forEach((button) => {
       button.addEventListener('click', () => button.closest('dialog').close());
     });
+    document.querySelectorAll('select[name="content_type"]').forEach((select) => {
+      const eventFields = select.form.querySelector('[data-event-fields]');
+      const updateEventFields = () => {
+        const isEvent = select.value === 'event';
+        eventFields.hidden = !isEvent;
+        eventFields.querySelectorAll('input').forEach((input) => { input.required = isEvent; });
+      };
+      select.addEventListener('change', updateEventFields);
+      updateEventFields();
+    });
     document.querySelectorAll('dialog').forEach((dialog) => {
       dialog.addEventListener('click', (event) => {
         if (event.target === dialog) dialog.close();

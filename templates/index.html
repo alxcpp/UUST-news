@@ -32,9 +32,10 @@
         <span class="image-caption">УУНиТ <span>/</span> {{ lead['category'] }}</span>
       </a>
       <div class="lead-copy">
-        <div class="story-meta"><span>{{ lead['category'] }}</span><span>{{ lead['published_at']|date_ru }}</span></div>
+        <div class="story-meta"><span>{{ 'Мероприятие' if lead['content_type'] == 'event' else lead['category'] }}</span><span>{{ lead['published_at']|date_ru }}</span></div>
         <h2><a href="{{ url_for('news_detail', news_id=lead['id']) }}">{{ lead['title'] }}</a></h2>
         <p>{{ lead['excerpt'] }}</p>
+        {% if lead['content_type'] == 'event' %}<p class="event-summary">{{ lead['event_date']|date_ru }} · {{ lead['event_location'] }}</p>{% endif %}
         <div class="lead-bottom">
           <span class="byline">{{ lead['author_name'] }}</span>
           <a class="text-link" href="{{ url_for('news_detail', news_id=lead['id']) }}">Читать новость <span aria-hidden="true">↗</span></a>
@@ -44,7 +45,7 @@
 
     <div class="section-heading">
       <h2>{% if search %}Результаты поиска{% else %}Последние публикации{% endif %}</h2>
-      <span>{{ articles|length }} новостей</span>
+      <span>{{ articles|length }} публикаций</span>
     </div>
     {% if articles|length > 1 %}
       <div class="news-grid">
@@ -52,9 +53,10 @@
           <article class="news-card">
             <a class="card-image" href="{{ url_for('news_detail', news_id=article['id']) }}" {% if article['image_url'] %}style="--story-image: url('{{ article['image_url'] }}')"{% endif %} aria-label="Читать: {{ article['title'] }}"></a>
             <div class="card-body">
-              <div class="story-meta"><span>{{ article['category'] }}</span><span>{{ article['published_at']|date_ru }}</span></div>
+              <div class="story-meta"><span>{{ 'Мероприятие' if article['content_type'] == 'event' else article['category'] }}</span><span>{{ article['published_at']|date_ru }}</span></div>
               <h3><a href="{{ url_for('news_detail', news_id=article['id']) }}">{{ article['title'] }}</a></h3>
               <p>{{ article['excerpt'] }}</p>
+              {% if article['content_type'] == 'event' %}<p class="event-summary">{{ article['event_date']|date_ru }} · {{ article['event_location'] }}</p>{% endif %}
               <div class="card-footer"><span>{{ article['author_name'] }}</span><span class="engagement">♡ {{ article['like_count'] }} <span>·</span> {{ article['comment_count'] }} комм.</span></div>
             </div>
           </article>
@@ -67,9 +69,9 @@
 
   <section class="contribute-band">
     <div class="contribute-mark">У</div>
-    <div><p class="eyebrow">Голос университета</p><h2>Есть чем поделиться?</h2><p>Предложите новость — редакция проверит её перед публикацией.</p></div>
+    <div><p class="eyebrow">Голос университета</p><h2>Есть чем поделиться?</h2><p>Предложите статью или мероприятие — редакция проверит перед публикацией.</p></div>
     {% if current_user %}
-      <button class="button button-white" type="button" data-dialog-open="proposal-dialog">Предложить новость <span aria-hidden="true">↗</span></button>
+      <button class="button button-white" type="button" data-dialog-open="proposal-dialog">Предложить публикацию <span aria-hidden="true">↗</span></button>
     {% else %}
       <a class="button button-white" href="{{ url_for('login') }}">Войти и предложить <span aria-hidden="true">↗</span></a>
     {% endif %}
@@ -80,12 +82,17 @@
 <dialog class="proposal-dialog" id="proposal-dialog">
   <form action="{{ url_for('submit_proposal') }}" method="post" class="proposal-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="dialog-heading"><div><p class="eyebrow">Предложение редакции</p><h2>Новая новость</h2></div><button class="icon-close" type="button" aria-label="Закрыть" data-dialog-close>×</button></div>
+    <div class="dialog-heading"><div><p class="eyebrow">Предложение редакции</p><h2>Новая публикация</h2></div><button class="icon-close" type="button" aria-label="Закрыть" data-dialog-close>×</button></div>
+    <label>Тип публикации<select name="content_type"><option value="article">Статья</option><option value="event">Мероприятие</option></select></label>
     <label>Заголовок<input name="title" maxlength="150" required minlength="4" placeholder="О чём новость?"></label>
     <label>Коротко<textarea name="excerpt" rows="2" maxlength="260" required minlength="10" placeholder="Краткое описание для ленты"></textarea></label>
-    <label>Текст новости<textarea name="content" rows="5" required minlength="30" placeholder="Расскажите подробности"></textarea></label>
+    <label>Текст публикации<textarea name="content" rows="5" required minlength="30" placeholder="Расскажите подробности"></textarea></label>
+    <div class="form-row" data-event-fields hidden>
+      <label>Дата мероприятия<input name="event_date" type="date"></label>
+      <label>Место проведения<input name="event_location" maxlength="160" placeholder="Корпус, аудитория или адрес"></label>
+    </div>
     <div class="form-row">
-      <label>Раздел<select name="category"><option>Университет</option><option>Наука</option><option>Студентам</option><option>Кампус</option></select></label>
+      <label>Раздел<select name="category"><option>Университет</option><option>Наука</option><option>Студентам</option><option>Кампус</option><option>Мероприятия</option></select></label>
       <label>Ссылка на фото <span class="optional">необязательно</span><input name="image_url" type="url" placeholder="https://"></label>
     </div>
     <div class="dialog-actions"><span>Публикация появится после проверки</span><button class="button button-red" type="submit">Отправить на проверку <span aria-hidden="true">↗</span></button></div>

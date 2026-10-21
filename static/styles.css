@@ -96,6 +96,8 @@ h1, h2, h3, p { margin-top: 0; }
 .lead-copy { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; padding: 44px clamp(30px, 5vw, 66px); }
 .story-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 13px; color: #777370; font-size: 10px; }
 .story-meta span:first-child { color: var(--red); font-weight: 800; }
+.event-summary, .event-details { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.event-details { margin: 0 0 22px; }
 .story-meta span + span::before { display: inline-block; width: 3px; height: 3px; margin: 0 13px 2px 0; border-radius: 50%; background: #bcb6b1; content: ""; }
 .lead-copy h2 { margin: 20px 0 13px; font-family: var(--display); font-size: clamp(25px, 3vw, 36px); font-weight: 650; letter-spacing: -.04em; line-height: 1.22; }
 .lead-copy h2 a:hover, .news-card h3 a:hover { color: var(--red); }
@@ -144,6 +146,7 @@ h1, h2, h3, p { margin-top: 0; }
 .proposal-form input:focus, .proposal-form textarea:focus, .proposal-form select:focus, .stack-form input:focus, .comment-form textarea:focus { border-color: var(--red); box-shadow: 0 0 0 2px rgba(164,22,42,.09); }
 .proposal-form textarea { min-height: 76px; }
 .form-row { display: grid; grid-template-columns: .8fr 1.2fr; gap: 16px; }
+.form-row[hidden] { display: none; }
 .optional { color: #99928c; font-size: 9px; font-weight: 400; }
 .dialog-actions { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-top: 7px; padding-top: 18px; border-top: 1px solid var(--line); }
 .dialog-actions > span { color: var(--muted); font-size: 10px; }
@@ -240,6 +243,9 @@ h1, h2, h3, p { margin-top: 0; }
 .pending-footer strong { color: #4b4744; }
 .review-actions { display: flex; flex: 0 0 auto; gap: 8px; }
 .admin-section { margin-top: 55px; }
+.user-search { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 17px; }
+.user-search input { width: min(360px, 100%); min-height: 36px; padding: 8px 10px; border: 1px solid var(--line); outline: 0; color: var(--ink); background: var(--white); font-size: 12px; }
+.user-search input:focus { border-color: var(--red); }
 .section-caption { color: var(--muted); font-size: 10px; }
 .user-table-wrap { overflow-x: auto; border-top: 1px solid var(--line); }
 .user-table { width: 100%; border-collapse: collapse; text-align: left; }

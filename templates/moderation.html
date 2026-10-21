@@ -11,8 +11,9 @@
     <div class="pending-list">
       {% for item in pending %}
         <article class="pending-item">
-          <div class="pending-top"><div class="story-meta"><span>{{ item['category'] }}</span><span>{{ item['created_at']|date_ru }}</span></div><span class="status-label">На проверке</span></div>
+          <div class="pending-top"><div class="story-meta"><span>{{ 'Мероприятие' if item['content_type'] == 'event' else item['category'] }}</span><span>{{ item['created_at']|date_ru }}</span></div><span class="status-label">На проверке</span></div>
           <h3>{{ item['title'] }}</h3><p class="pending-excerpt">{{ item['excerpt'] }}</p><p class="pending-content">{{ item['content'] }}</p>
+          {% if item['content_type'] == 'event' %}<p class="event-details"><strong>Дата:</strong> {{ item['event_date']|date_ru }} <span>·</span> <strong>Место:</strong> {{ item['event_location'] }}</p>{% endif %}
           {% if item['image_url'] %}<a class="pending-photo" href="{{ item['image_url'] }}" target="_blank" rel="noopener noreferrer">Открыть изображение ↗</a>{% endif %}
           <div class="pending-footer"><span>Автор: <strong>{{ item['author_name'] }}</strong> · {{ item['author_email'] }}</span><div class="review-actions">
             <form action="{{ url_for('review_proposal', news_id=item['id'], action='reject') }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="button button-quiet button-small" type="submit">Отклонить</button></form>
@@ -28,13 +29,19 @@
   {% if current_user['role'] == 'admin' %}
     <section class="admin-section" id="team">
       <div class="dashboard-section-title"><div><p class="eyebrow">Управление доступом</p><h2>Команда портала</h2></div><span class="section-caption">Администратор</span></div>
+      <form class="user-search" action="{{ url_for('moderation') }}" method="get">
+        <label class="sr-only" for="user-email-search">Поиск по email</label>
+        <input id="user-email-search" type="search" name="user_email" value="{{ user_email }}" placeholder="Найти пользователя по email">
+        <button class="button button-red button-small" type="submit">Найти</button>
+        {% if user_email %}<a class="text-link" href="{{ url_for('moderation') }}#team">Сбросить</a>{% endif %}
+      </form>
       <div class="user-table-wrap"><table class="user-table"><thead><tr><th>Пользователь</th><th>Email</th><th>Роль</th><th>Действие</th></tr></thead><tbody>
         {% for user in users %}
-          <tr><td class="member-name">{{ user['name'] }}</td><td>{{ user['email'] }}</td><td><span class="role-pill role-pill-{{ user['role'] }}">{{ 'Модератор' if user['role'] == 'moderator' else 'Пользователь' }}</span></td><td>
-            <form class="role-form" action="{{ url_for('update_role', user_id=user['id']) }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><select name="role" aria-label="Роль для {{ user['name'] }}"><option value="user" {% if user['role'] == 'user' %}selected{% endif %}>Пользователь</option><option value="moderator" {% if user['role'] == 'moderator' %}selected{% endif %}>Модератор</option></select><button type="submit" class="text-link">Сохранить ↗</button></form>
+          <tr><td class="member-name">{{ user['name'] }}</td><td>{{ user['email'] }}</td><td><span class="role-pill role-pill-{{ user['role'] }}">{{ {'user': 'Пользователь', 'moderator': 'Модератор', 'admin': 'Администратор'}[user['role']] }}</span></td><td>
+            <form class="role-form" action="{{ url_for('update_role', user_id=user['id']) }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><select name="role" aria-label="Роль для {{ user['name'] }}"><option value="user" {% if user['role'] == 'user' %}selected{% endif %}>Пользователь</option><option value="moderator" {% if user['role'] == 'moderator' %}selected{% endif %}>Модератор</option><option value="admin" {% if user['role'] == 'admin' %}selected{% endif %}>Администратор</option></select><button type="submit" class="text-link">Сохранить ↗</button></form>
           </td></tr>
         {% else %}
-          <tr><td colspan="4" class="table-empty">Пока нет зарегистрированных пользователей.</td></tr>
+          <tr><td colspan="4" class="table-empty">{% if user_email %}По этому email пользователей не найдено.{% else %}Пока нет зарегистрированных пользователей.{% endif %}</td></tr>
         {% endfor %}
       </tbody></table></div>
     </section>

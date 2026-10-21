@@ -58,6 +58,9 @@ def init_db():
             content TEXT NOT NULL,
             category TEXT NOT NULL,
             image_url TEXT NOT NULL DEFAULT '',
+            content_type TEXT NOT NULL DEFAULT 'article' CHECK (content_type IN ('article', 'event')),
+            event_date TEXT,
+            event_location TEXT,
             author_id INTEGER NOT NULL REFERENCES users(id),
             status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'published', 'rejected')),
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -79,6 +82,14 @@ def init_db():
         );
         """
     )
+    news_columns = {row[1] for row in db.execute("PRAGMA table_info(news)")}
+    for column, definition in (
+        ("content_type", "TEXT NOT NULL DEFAULT 'article' CHECK (content_type IN ('article', 'event'))"),
+        ("event_date", "TEXT"),
+        ("event_location", "TEXT"),
+    ):
+        if column not in news_columns:
+            db.execute(f"ALTER TABLE news ADD COLUMN {column} {definition}")
 
     admin_email = "admin@uust.local"
     admin = db.execute("SELECT id FROM users WHERE email = ?", (admin_email,)).fetchone()
@@ -277,18 +288,42 @@ def submit_proposal():
     content = request.form.get("content", "").strip()
     category = request.form.get("category", "Университет").strip()
     image_url = request.form.get("image_url", "").strip()
-    allowed_categories = {"Университет", "Наука", "Студентам", "Кампус"}
+    content_type = request.form.get("content_type", "article")
+    event_date = request.form.get("event_date", "").strip()
+    event_location = request.form.get("event_location", "").strip()
+    allowed_categories = {"Университет", "Наука", "Студентам", "Кампус", "Мероприятия"}
     valid_image = not image_url or image_url.startswith(("https://", "http://"))
+    valid_type = content_type in {"article", "event"}
+    valid_event = True
+    if content_type == "event":
+        try:
+            datetime.strptime(event_date, "%Y-%m-%d")
+        except ValueError:
+            valid_event = False
+        valid_event = valid_event and 2 <= len(event_location) <= 160
     if not (4 <= len(title) <= 150 and 10 <= len(excerpt) <= 260 and 30 <= len(content) <= 8000):
         flash("Заполните заголовок, краткое описание и текст новости.", "error")
+    elif not valid_type or not valid_event:
+        flash("Для мероприятия укажите корректные дату и место проведения.", "error")
     elif category not in allowed_categories or not valid_image:
         flash("Проверьте категорию и ссылку на изображение.", "error")
     else:
         db = get_db()
         db.execute(
-            """INSERT INTO news (title, excerpt, content, category, image_url, author_id)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (title, excerpt, content, category, image_url, current_user()["id"]),
+            """INSERT INTO news
+               (title, excerpt, content, category, image_url, content_type, event_date, event_location, author_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                title,
+                excerpt,
+                content,
+                category,
+                image_url,
+                content_type,
+                event_date if content_type == "event" else None,
+                event_location if content_type == "event" else None,
+                current_user()["id"],
+            ),
         )
         db.commit()
         flash("Предложение отправлено на проверку.", "success")
@@ -361,6 +396,7 @@ def add_comment(news_id):
 @roles_required("moderator", "admin")
 def moderation():
     db = get_db()
+    user_email = request.args.get("user_email", "").strip()
     pending = db.execute(
         """SELECT news.*, users.name AS author_name, users.email AS author_email
            FROM news JOIN users ON users.id = news.author_id
@@ -369,13 +405,23 @@ def moderation():
     users = []
     published = []
     if current_user()["role"] == "admin":
-        users = db.execute(
-            "SELECT id, name, email, role, created_at FROM users WHERE role != 'admin' ORDER BY created_at DESC"
-        ).fetchall()
+        if user_email:
+            users = db.execute(
+                """SELECT id, name, email, role, created_at FROM users
+                   WHERE id != ? AND email LIKE ? COLLATE NOCASE ORDER BY created_at DESC""",
+                (current_user()["id"], f"%{user_email}%"),
+            ).fetchall()
+        else:
+            users = db.execute(
+                "SELECT id, name, email, role, created_at FROM users WHERE id != ? ORDER BY created_at DESC",
+                (current_user()["id"],),
+            ).fetchall()
         published = db.execute(
             "SELECT id, title, category, published_at FROM news WHERE status = 'published' ORDER BY published_at DESC"
         ).fetchall()
-    return render_template("moderation.html", pending=pending, users=users, published=published)
+    return render_template(
+        "moderation.html", pending=pending, users=users, published=published, user_email=user_email
+    )
 
 
 @app.post("/moderation/<int:news_id>/<action>")
@@ -403,13 +449,13 @@ def review_proposal(news_id, action):
 @roles_required("admin")
 def update_role(user_id):
     role = request.form.get("role")
-    if role not in {"user", "moderator"}:
+    if role not in {"user", "moderator", "admin"}:
         abort(400)
     if user_id == current_user()["id"]:
         flash("Нельзя изменить собственную роль администратора.", "error")
         return redirect(url_for("moderation") + "#team")
     db = get_db()
-    cursor = db.execute("UPDATE users SET role = ? WHERE id = ? AND role != 'admin'", (role, user_id))
+    cursor = db.execute("UPDATE users SET role = ? WHERE id = ?", (role, user_id))
     db.commit()
     flash("Роль пользователя обновлена." if cursor.rowcount else "Пользователь не найден.", "success")
     return redirect(url_for("moderation") + "#team")

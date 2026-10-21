@@ -4,11 +4,12 @@
 <article class="article-page">
   <a class="back-link" href="{{ url_for('index') }}">← <span>Все новости</span></a>
   <div class="article-header">
-    <div class="story-meta"><span>{{ article['category'] }}</span><span>{{ article['published_at']|date_ru }}</span></div>
+    <div class="story-meta"><span>{{ 'Мероприятие' if article['content_type'] == 'event' else article['category'] }}</span><span>{{ article['published_at']|date_ru }}</span></div>
     <h1>{{ article['title'] }}</h1>
     <p class="article-deck">{{ article['excerpt'] }}</p>
     <div class="byline">{{ article['author_name'] }} <span>·</span> УУНиТ</div>
   </div>
+  {% if article['content_type'] == 'event' %}<p class="event-details"><strong>Когда:</strong> {{ article['event_date']|date_ru }} <span>·</span> <strong>Где:</strong> {{ article['event_location'] }}</p>{% endif %}
   {% if article['image_url'] %}<img class="article-image" src="{{ article['image_url'] }}" alt="Иллюстрация к новости: {{ article['title'] }}">{% endif %}
   <div class="article-body-layout">
     <div class="article-content">{% for paragraph in article['content'].split('\n\n') %}<p>{{ paragraph }}</p>{% endfor %}</div>
