@@ -254,15 +254,20 @@ h1, h2, h3, p { margin-top: 0; }
 .pending-item h3 { margin: 13px 0 5px; font-family: var(--display); font-size: 20px; letter-spacing: -.025em; }
 .pending-excerpt { margin: 0 0 9px; color: #5f5a56; font-size: 12px; }
 .pending-content { max-width: 850px; margin: 0; color: #77716d; font-size: 11px; line-height: 1.8; white-space: pre-wrap; }
-.grammar-review { margin-top: 16px; padding: 13px 15px; border-left: 2px solid var(--red); background: var(--red-soft); }
-.grammar-review p { margin: 0; font-size: 10px; }
-.grammar-heading { color: var(--red-dark); font-weight: 800; }
-.grammar-list { display: grid; gap: 9px; margin: 9px 0; padding-left: 17px; color: var(--ink); font-size: 10px; }
-.grammar-list strong { color: var(--red-dark); }
-.grammar-suggestions, .grammar-context { display: block; margin-top: 3px; color: var(--muted); }
-.grammar-ok { color: var(--green); font-weight: 700; }
-.grammar-unavailable { color: var(--red-dark); font-weight: 700; }
-.grammar-note { margin-top: 7px !important; color: var(--muted); }
+.semantic-review { margin-top: 12px; padding: 14px 15px; border: 1px solid var(--line); background: var(--paper); }
+.semantic-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 11px; font-size: 11px; }
+.semantic-title span { color: var(--muted); font-size: 9px; }
+.semantic-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.semantic-category { min-width: 0; padding: 9px; border-left: 2px solid #85808e; background: var(--white); }
+.semantic-category > div { display: flex; align-items: baseline; justify-content: space-between; gap: 7px; }
+.semantic-category > div strong { font-size: 9px; }
+.semantic-category > div span { color: var(--muted); font-size: 8px; text-align: right; }
+.semantic-category p { margin: 7px 0 0; color: var(--ink); font-size: 9px; line-height: 1.55; overflow-wrap: anywhere; }
+.semantic-suggestion { display: block; margin-top: 3px; color: var(--muted); }
+.semantic-clear { border-color: var(--green); }
+.semantic-issues { border-color: var(--red); }
+.semantic-uncertain, .semantic-unavailable { border-color: var(--gold); }
+.semantic-caveat, .semantic-unavailable { margin: 10px 0 0; color: var(--muted); font-size: 9px; line-height: 1.6; }
 .proposal-submit-actions { align-items: flex-start; }
 .proposal-submit-actions > span { max-width: 260px; line-height: 1.5; }
 .pending-photo { display: inline-block; margin-top: 11px; color: var(--red); font-size: 10px; font-weight: 700; }
@@ -354,11 +359,7 @@ html[data-theme="dark"] .dialog-actions > span,
 html[data-theme="dark"] .comment-form-bottom > span { color: var(--muted); }
 html[data-theme="dark"] .search-form { border-color: var(--line); }
 html[data-theme="dark"] .search-form input { color: var(--ink); }
-html[data-theme="dark"] .grammar-review { background: #30263e; }
-html[data-theme="dark"] .grammar-heading,
-html[data-theme="dark"] .grammar-list strong,
-html[data-theme="dark"] .grammar-unavailable { color: #d5c1ff; }
-html[data-theme="dark"] .grammar-list { color: var(--ink); }
+html[data-theme="dark"] .semantic-category { background: #211d28; }
 
 @media (max-width: 850px) {
   .site-header { padding: 0 24px; }
@@ -456,6 +457,7 @@ html[data-theme="dark"] .grammar-list { color: var(--ink); }
   .dashboard-heading h1 { font-size: 38px; }
   .dashboard-heading > p { margin-top: 14px; }
   .pending-item { padding: 17px 15px; }
+  .semantic-grid { grid-template-columns: 1fr; }
   .pending-item h3 { font-size: 17px; }
   .pending-footer { align-items: flex-start; flex-direction: column; }
   .review-actions { width: 100%; }

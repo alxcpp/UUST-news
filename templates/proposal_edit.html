@@ -5,13 +5,18 @@
   <a class="back-link" href="{{ url_for('moderation') }}">← <span>К очереди модерации</span></a>
   <form action="{{ url_for('edit_proposal', news_id=article['id']) }}" method="post" class="proposal-form proposal-edit-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="dialog-heading"><div><p class="eyebrow">Предложение на проверке</p><h1>Редактировать новость</h1></div><button class="button button-quiet button-small" type="button" data-dialog-open="grammar-window">Вариант исправлений</button></div>
+    <div class="dialog-heading"><div><p class="eyebrow">Предложение на проверке</p><h1>Редактировать публикацию</h1></div><button class="button button-quiet button-small" type="button" data-dialog-open="grammar-window">Вариант исправлений</button></div>
+    <label>Тип публикации<select name="content_type"><option value="article" {% if values.get('content_type', article['content_type']) == 'article' %}selected{% endif %}>Статья</option><option value="event" {% if values.get('content_type', article['content_type']) == 'event' %}selected{% endif %}>Мероприятие</option></select></label>
     <label>Заголовок<input name="title" maxlength="150" minlength="4" required value="{{ values.get('title', article['title']) }}"></label>
     <label>Краткое описание<textarea name="excerpt" rows="3" maxlength="260" minlength="10" required>{{ values.get('excerpt', article['excerpt']) }}</textarea></label>
     <label>Текст новости<textarea name="content" rows="9" minlength="30" maxlength="8000" required>{{ values.get('content', article['content']) }}</textarea></label>
+    <div class="form-row" data-event-fields {% if values.get('content_type', article['content_type']) != 'event' %}hidden{% endif %}>
+      <label>Дата мероприятия<input name="event_date" type="date" value="{{ values.get('event_date', article['event_date'] or '') }}"></label>
+      <label>Место проведения<input name="event_location" maxlength="160" value="{{ values.get('event_location', article['event_location'] or '') }}" placeholder="Корпус, аудитория или адрес"></label>
+    </div>
     <div class="form-row">
       <label>Раздел<select name="category" required>
-        {% for category in ['Университет', 'Наука', 'Студентам', 'Кампус'] %}
+        {% for category in ['Университет', 'Наука', 'Студентам', 'Кампус', 'Мероприятия'] %}
           <option value="{{ category }}" {% if values.get('category', article['category']) == category %}selected{% endif %}>{{ category }}</option>
         {% endfor %}
       </select></label>
@@ -22,19 +27,20 @@
   {% set grammar = article['grammar_result']|from_json %}
   <dialog class="grammar-window" id="grammar-window">
     <div class="grammar-window-content">
-      <div class="dialog-heading"><div><p class="eyebrow">Черновик LanguageTool</p><h2>Вариант с исправлениями</h2></div><button class="icon-close" type="button" aria-label="Закрыть" data-dialog-close>×</button></div>
-      {% if grammar and grammar['status'] == 'checked' and grammar.get('corrected') %}
-        <p class="grammar-window-note">Текст собран из предложений сервиса, это не генеративный ИИ. Сверьте каждую правку с оригиналом: автоматические подсказки могут ошибаться. Изменения не сохраняются, пока вы не нажмёте «Сохранить изменения».</p>
+      {% set ai_review = grammar.get('semantic') if grammar else none %}
+      <div class="dialog-heading"><div><p class="eyebrow">Черновик Gemini</p><h2>Вариант с исправлениями</h2></div><button class="icon-close" type="button" aria-label="Закрыть" data-dialog-close>×</button></div>
+      {% if ai_review and ai_review['status'] == 'checked' and ai_review.get('corrected') %}
+        <p class="grammar-window-note">Текст вычитан ИИ целиком с учётом контекста. Сверьте его с оригиналом, особенно факты: модель не проверяет их по источникам. Изменения не сохраняются, пока вы не нажмёте «Сохранить изменения».</p>
         <div class="grammar-draft-fields">
           {% for field, label in [('title', 'Заголовок'), ('excerpt', 'Краткое описание'), ('content', 'Текст новости')] %}
-            <div class="grammar-draft-field"><label for="corrected-{{ field }}">{{ label }}</label><textarea id="corrected-{{ field }}" data-corrected-field="{{ field }}" readonly rows="{% if field == 'content' %}9{% else %}3{% endif %}">{{ grammar['corrected'].get(field, article[field]) }}</textarea><button class="button button-quiet button-small" type="button" data-copy-field="{{ field }}">Скопировать {{ label|lower }}</button></div>
+            <div class="grammar-draft-field"><label for="corrected-{{ field }}">{{ label }}</label><textarea id="corrected-{{ field }}" data-corrected-field="{{ field }}" readonly rows="{% if field == 'content' %}9{% else %}3{% endif %}">{{ ai_review['corrected'].get(field, article[field]) }}</textarea><button class="button button-quiet button-small" type="button" data-copy-field="{{ field }}">Скопировать {{ label|lower }}</button></div>
           {% endfor %}
         </div>
         <div class="grammar-window-actions"><button class="button button-quiet" type="button" data-copy-all>Скопировать весь текст</button><button class="button button-red" type="button" data-apply-corrections>Подставить в форму</button></div>
-      {% elif grammar and grammar['status'] == 'unavailable' %}
-        <p class="grammar-window-note">LanguageTool был недоступен при последней проверке, исправленный вариант не создан.</p>
+      {% elif ai_review and ai_review['status'] == 'unavailable' %}
+        <p class="grammar-window-note">{% if ai_review.get('reason') == 'not_configured' %}Исправленный вариант появится после настройки GEMINI_API_KEY в окружении приложения.{% elif ai_review.get('reason') == 'invalid_key' %}Gemini API отклонил ключ или доступ к модели.{% elif ai_review.get('reason') == 'quota_exceeded' %}Исчерпан лимит Gemini API; попробуйте позже.{% elif ai_review.get('reason') == 'service_busy' %}Модели Gemini перегружены; резервные варианты тоже временно недоступны. Попробуйте позже.{% elif ai_review.get('reason') == 'connection_error' %}Не удалось соединиться с Gemini API.{% else %}Gemini API не вернул корректный ответ. Проверьте настройки и повторите позже.{% endif %}</p>
       {% else %}
-        <p class="grammar-window-note">Для этого предложения нет сохранённого варианта с исправлениями. Сначала сохраните правки, чтобы запустить LanguageTool.</p>
+        <p class="grammar-window-note">Для этого предложения пока нет исправленного варианта. Сохраните правки, чтобы запустить проверку Gemini.</p>
       {% endif %}
     </div>
   </dialog>

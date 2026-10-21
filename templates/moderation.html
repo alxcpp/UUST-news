@@ -14,24 +14,24 @@
           <div class="pending-top"><div class="story-meta"><span>{{ 'Мероприятие' if item['content_type'] == 'event' else item['category'] }}</span><span>{{ item['created_at']|date_ru }}</span></div><span class="status-label">На проверке</span></div>
           <h3>{{ item['title'] }}</h3><p class="pending-excerpt">{{ item['excerpt'] }}</p><p class="pending-content">{{ item['content'] }}</p>
           {% if item['content_type'] == 'event' %}<p class="event-details"><strong>Дата:</strong> {{ item['event_date']|date_ru }} <span>·</span> <strong>Место:</strong> {{ item['event_location'] }}</p>{% endif %}
-          {% set grammar = item['grammar_result']|from_json %}
-          <section class="grammar-review" aria-label="Результат проверки грамматики">
-            {% if grammar and grammar['status'] == 'checked' %}
-              {% if grammar['matches'] %}
-                <p class="grammar-heading">LanguageTool нашёл замечания: {{ grammar['matches']|length }}</p>
-                <ul class="grammar-list">
-                  {% for finding in grammar['matches'] %}
-                    <li><strong>{{ {'title': 'Заголовок', 'excerpt': 'Описание', 'content': 'Текст'}[finding['field']] }}:</strong> {{ finding['message'] }}{% if finding['suggestions'] %}<span class="grammar-suggestions">Варианты: {{ finding['suggestions']|join(' · ') }}</span>{% endif %}<span class="grammar-context">«{{ finding['fragment'] }}»</span></li>
-                  {% endfor %}
-                </ul>
-              {% else %}
-                <p class="grammar-ok">LanguageTool не нашёл замечаний по грамматике.</p>
-              {% endif %}
-              <p class="grammar-note">Автоматическая проверка может ошибаться. Решение о публикации принимает редактор.</p>
-            {% elif grammar and grammar['status'] == 'unavailable' %}
-              <p class="grammar-unavailable">LanguageTool временно недоступен. Проверьте текст вручную.</p>
+          {% set report = item['grammar_result']|from_json %}
+          {% set semantic = report.get('semantic') if report else none %}
+          <section class="semantic-review" aria-label="Результаты проверки ИИ">
+            <div class="semantic-title"><strong>Проверка ИИ по категориям</strong>{% if semantic and semantic.get('model') %}<span>{{ semantic['model'] }}</span>{% endif %}</div>
+            {% if semantic and semantic['status'] == 'checked' %}
+              <div class="semantic-grid">
+                {% for category in semantic['categories'] %}
+                  <article class="semantic-category semantic-{{ category['status'] }}">
+                    <div><strong>{{ category['label'] }}</strong><span>{{ {'clear': 'Без замечаний', 'issues': 'Есть замечания', 'uncertain': 'Проверьте вручную', 'unavailable': 'Не проверено'}[category['status']] }}</span></div>
+                    {% for finding in category['findings'] %}
+                      <p>{% if finding['quote'] %}<q>{{ finding['quote'] }}</q> · {% endif %}{{ finding['message'] }}{% if finding['suggestion'] %}<span class="semantic-suggestion">Вариант: {{ finding['suggestion'] }}</span>{% endif %}</p>
+                    {% endfor %}
+                  </article>
+                {% endfor %}
+              </div>
+              <p class="semantic-caveat">Фактические утверждения ИИ не сверяет с внешними источниками. Неоднозначные случаи, логику и этико-речевые риски обязательно оцените самостоятельно.</p>
             {% else %}
-              <p class="grammar-note">Для этого предложения автоматическая проверка не запускалась.</p>
+              <p class="semantic-unavailable">{% if not report %}Для этой новости ещё нет актуального AI-отчёта. Откройте редактирование и сохраните её, чтобы запустить проверку повторно.{% elif semantic and semantic.get('reason') == 'not_configured' %}Ключ Gemini API не настроен.{% elif semantic and semantic.get('reason') == 'invalid_key' %}Gemini API отклонил ключ или доступ к модели.{% elif semantic and semantic.get('reason') == 'quota_exceeded' %}Исчерпан лимит запросов Gemini API.{% elif semantic and semantic.get('reason') == 'service_busy' %}Модели Gemini временно перегружены. Попробуйте повторить проверку позже.{% elif semantic and semantic.get('reason') == 'connection_error' %}Нет соединения с Gemini API.{% elif semantic and semantic.get('reason') == 'model_unavailable' %}Настроенные модели недоступны для этого ключа.{% else %}Gemini не вернул корректный ответ. Проверьте модель и настройки API.{% endif %}</p>
             {% endif %}
           </section>
           {% if item['image_url'] %}<a class="pending-photo" href="{{ item['image_url'] }}" target="_blank" rel="noopener noreferrer">Открыть изображение ↗</a>{% endif %}
