@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Редактировать предложение — УУНиТ{% endblock %}
+{% block content %}
+<section class="proposal-edit-page">
+  <a class="back-link" href="{{ url_for('moderation') }}">← <span>К очереди модерации</span></a>
+  <form action="{{ url_for('edit_proposal', news_id=article['id']) }}" method="post" class="proposal-form proposal-edit-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="dialog-heading"><div><p class="eyebrow">Предложение на проверке</p><h1>Редактировать новость</h1></div><button class="button button-quiet button-small" type="button" data-dialog-open="grammar-window">Вариант исправлений</button></div>
+    <label>Заголовок<input name="title" maxlength="150" minlength="4" required value="{{ values.get('title', article['title']) }}"></label>
+    <label>Краткое описание<textarea name="excerpt" rows="3" maxlength="260" minlength="10" required>{{ values.get('excerpt', article['excerpt']) }}</textarea></label>
+    <label>Текст новости<textarea name="content" rows="9" minlength="30" maxlength="8000" required>{{ values.get('content', article['content']) }}</textarea></label>
+    <div class="form-row">
+      <label>Раздел<select name="category" required>
+        {% for category in ['Университет', 'Наука', 'Студентам', 'Кампус'] %}
+          <option value="{{ category }}" {% if values.get('category', article['category']) == category %}selected{% endif %}>{{ category }}</option>
+        {% endfor %}
+      </select></label>
+      <label>Ссылка на фото <span class="optional">необязательно</span><input name="image_url" type="url" value="{{ values.get('image_url', article['image_url']) }}" placeholder="https://"></label>
+    </div>
+    <div class="dialog-actions"><span>Правки сохранятся в предложении до решения редакции</span><div class="review-actions"><a class="button button-quiet" href="{{ url_for('moderation') }}">Отмена</a><button class="button button-red" type="submit">Сохранить изменения ↗</button></div></div>
+  </form>
+  {% set grammar = article['grammar_result']|from_json %}
+  <dialog class="grammar-window" id="grammar-window">
+    <div class="grammar-window-content">
+      <div class="dialog-heading"><div><p class="eyebrow">Черновик LanguageTool</p><h2>Вариант с исправлениями</h2></div><button class="icon-close" type="button" aria-label="Закрыть" data-dialog-close>×</button></div>
+      {% if grammar and grammar['status'] == 'checked' and grammar.get('corrected') %}
+        <p class="grammar-window-note">Текст собран из предложений сервиса, это не генеративный ИИ. Сверьте каждую правку с оригиналом: автоматические подсказки могут ошибаться. Изменения не сохраняются, пока вы не нажмёте «Сохранить изменения».</p>
+        <div class="grammar-draft-fields">
+          {% for field, label in [('title', 'Заголовок'), ('excerpt', 'Краткое описание'), ('content', 'Текст новости')] %}
+            <div class="grammar-draft-field"><label for="corrected-{{ field }}">{{ label }}</label><textarea id="corrected-{{ field }}" data-corrected-field="{{ field }}" readonly rows="{% if field == 'content' %}9{% else %}3{% endif %}">{{ grammar['corrected'].get(field, article[field]) }}</textarea><button class="button button-quiet button-small" type="button" data-copy-field="{{ field }}">Скопировать {{ label|lower }}</button></div>
+          {% endfor %}
+        </div>
+        <div class="grammar-window-actions"><button class="button button-quiet" type="button" data-copy-all>Скопировать весь текст</button><button class="button button-red" type="button" data-apply-corrections>Подставить в форму</button></div>
+      {% elif grammar and grammar['status'] == 'unavailable' %}
+        <p class="grammar-window-note">LanguageTool был недоступен при последней проверке, исправленный вариант не создан.</p>
+      {% else %}
+        <p class="grammar-window-note">Для этого предложения нет сохранённого варианта с исправлениями. Сначала сохраните правки, чтобы запустить LanguageTool.</p>
+      {% endif %}
+    </div>
+  </dialog>
+</section>
+{% endblock %}

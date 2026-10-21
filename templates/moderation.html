@@ -14,8 +14,29 @@
           <div class="pending-top"><div class="story-meta"><span>{{ 'Мероприятие' if item['content_type'] == 'event' else item['category'] }}</span><span>{{ item['created_at']|date_ru }}</span></div><span class="status-label">На проверке</span></div>
           <h3>{{ item['title'] }}</h3><p class="pending-excerpt">{{ item['excerpt'] }}</p><p class="pending-content">{{ item['content'] }}</p>
           {% if item['content_type'] == 'event' %}<p class="event-details"><strong>Дата:</strong> {{ item['event_date']|date_ru }} <span>·</span> <strong>Место:</strong> {{ item['event_location'] }}</p>{% endif %}
+          {% set grammar = item['grammar_result']|from_json %}
+          <section class="grammar-review" aria-label="Результат проверки грамматики">
+            {% if grammar and grammar['status'] == 'checked' %}
+              {% if grammar['matches'] %}
+                <p class="grammar-heading">LanguageTool нашёл замечания: {{ grammar['matches']|length }}</p>
+                <ul class="grammar-list">
+                  {% for finding in grammar['matches'] %}
+                    <li><strong>{{ {'title': 'Заголовок', 'excerpt': 'Описание', 'content': 'Текст'}[finding['field']] }}:</strong> {{ finding['message'] }}{% if finding['suggestions'] %}<span class="grammar-suggestions">Варианты: {{ finding['suggestions']|join(' · ') }}</span>{% endif %}<span class="grammar-context">«{{ finding['fragment'] }}»</span></li>
+                  {% endfor %}
+                </ul>
+              {% else %}
+                <p class="grammar-ok">LanguageTool не нашёл замечаний по грамматике.</p>
+              {% endif %}
+              <p class="grammar-note">Автоматическая проверка может ошибаться. Решение о публикации принимает редактор.</p>
+            {% elif grammar and grammar['status'] == 'unavailable' %}
+              <p class="grammar-unavailable">LanguageTool временно недоступен. Проверьте текст вручную.</p>
+            {% else %}
+              <p class="grammar-note">Для этого предложения автоматическая проверка не запускалась.</p>
+            {% endif %}
+          </section>
           {% if item['image_url'] %}<a class="pending-photo" href="{{ item['image_url'] }}" target="_blank" rel="noopener noreferrer">Открыть изображение ↗</a>{% endif %}
           <div class="pending-footer"><span>Автор: <strong>{{ item['author_name'] }}</strong> · {{ item['author_email'] }}</span><div class="review-actions">
+            <a class="button button-quiet button-small" href="{{ url_for('edit_proposal', news_id=item['id']) }}">Редактировать</a>
             <form action="{{ url_for('review_proposal', news_id=item['id'], action='reject') }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="button button-quiet button-small" type="submit">Отклонить</button></form>
             <form action="{{ url_for('review_proposal', news_id=item['id'], action='approve') }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="button button-red button-small" type="submit">Опубликовать ↗</button></form>
           </div></div>
