@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#5300d7">
+  <title>{% block title %}УУНиТ — новости{% endblock %}</title>
+  <script>
+    try {
+      if (localStorage.getItem('uust-news-theme') === 'dark') document.documentElement.dataset.theme = 'dark';
+    } catch {}
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+  <div class="topline"></div>
+  <header class="site-header">
+    <a class="brand" href="{{ url_for('index') }}" aria-label="УУНиТ, главная">
+      <span class="brand-mark">У</span>
+      <span class="brand-copy"><strong>УУНиТ</strong><small>Университетские новости</small></span>
+    </a>
+    <nav class="main-nav" aria-label="Основная навигация">
+      <a class="nav-link {% if request.endpoint == 'index' %}is-active{% endif %}" href="{{ url_for('index') }}">Лента</a>
+      {% if current_user and current_user['role'] in ['moderator', 'admin'] %}
+        <a class="nav-link {% if request.endpoint == 'moderation' %}is-active{% endif %}" href="{{ url_for('moderation') }}">Модерация</a>
+      {% endif %}
+    </nav>
+    <div class="header-actions">
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Включить тёмную тему" title="Переключить тему"><span aria-hidden="true">☾</span></button>
+      {% if current_user %}
+        <span class="user-greeting">{{ current_user['name'] }}</span>
+        <span class="role-dot role-{{ current_user['role'] }}" title="{{ {'user': 'Пользователь', 'moderator': 'Модератор', 'admin': 'Администратор'}[current_user['role']] }}"></span>
+        <form action="{{ url_for('logout') }}" method="post" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="button button-quiet button-small" type="submit">Выйти</button>
+        </form>
+      {% else %}
+        <a class="button button-quiet button-small" href="{{ url_for('login') }}">Войти</a>
+        <a class="button button-red button-small" href="{{ url_for('register') }}">Регистрация</a>
+      {% endif %}
+    </div>
+  </header>
+
+  <main>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-stack" role="status">
+          {% for category, message in messages %}<div class="flash flash-{{ category }}">{{ message }}</div>{% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    <a class="footer-brand" href="{{ url_for('index') }}">УУНиТ <span>·</span> Новости</a>
+    <span>Уфимский университет науки и технологий</span>
+    <span class="footer-year">Информационная лента университета</span>
+  </footer>
+  <script>
+    const themeToggle = document.getElementById('theme-toggle');
+    const setTheme = (dark) => {
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      themeToggle.setAttribute('aria-label', dark ? 'Включить светлую тему' : 'Включить тёмную тему');
+      themeToggle.innerHTML = `<span aria-hidden="true">${dark ? '☼' : '☾'}</span>`;
+      try {
+        localStorage.setItem('uust-news-theme', dark ? 'dark' : 'light');
+      } catch {}
+    };
+    themeToggle.addEventListener('click', () => setTheme(document.documentElement.dataset.theme !== 'dark'));
+    if (document.documentElement.dataset.theme === 'dark') setTheme(true);
+    document.querySelectorAll('[data-dialog-open]').forEach((button) => {
+      button.addEventListener('click', () => document.getElementById(button.dataset.dialogOpen).showModal());
+    });
+    document.querySelectorAll('[data-dialog-close]').forEach((button) => {
+      button.addEventListener('click', () => button.closest('dialog').close());
+    });
+    document.querySelectorAll('dialog').forEach((dialog) => {
+      dialog.addEventListener('click', (event) => {
+        if (event.target === dialog) dialog.close();
+      });
+    });
+  </script>
+</body>
+</html>

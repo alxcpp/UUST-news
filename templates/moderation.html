@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Модерация — УУНиТ{% endblock %}
+{% block content %}
+<section class="dashboard-shell">
+  <div class="dashboard-heading">
+    <div><p class="eyebrow">Редакция УУНиТ</p><h1>Панель <em>модерации.</em></h1></div>
+    <p>Проверяйте предложения сообщества и помогайте новостям находить читателей.</p>
+  </div>
+  <div class="dashboard-section-title"><div><p class="eyebrow">Очередь</p><h2>Предложения на проверку</h2></div><span class="count-badge">{{ pending|length }}</span></div>
+  {% if pending %}
+    <div class="pending-list">
+      {% for item in pending %}
+        <article class="pending-item">
+          <div class="pending-top"><div class="story-meta"><span>{{ item['category'] }}</span><span>{{ item['created_at']|date_ru }}</span></div><span class="status-label">На проверке</span></div>
+          <h3>{{ item['title'] }}</h3><p class="pending-excerpt">{{ item['excerpt'] }}</p><p class="pending-content">{{ item['content'] }}</p>
+          {% if item['image_url'] %}<a class="pending-photo" href="{{ item['image_url'] }}" target="_blank" rel="noopener noreferrer">Открыть изображение ↗</a>{% endif %}
+          <div class="pending-footer"><span>Автор: <strong>{{ item['author_name'] }}</strong> · {{ item['author_email'] }}</span><div class="review-actions">
+            <form action="{{ url_for('review_proposal', news_id=item['id'], action='reject') }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="button button-quiet button-small" type="submit">Отклонить</button></form>
+            <form action="{{ url_for('review_proposal', news_id=item['id'], action='approve') }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="button button-red button-small" type="submit">Опубликовать ↗</button></form>
+          </div></div>
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty-state compact-empty"><span class="empty-mark">✓</span><h2>Очередь пуста</h2><p>Новые предложения появятся здесь.</p></div>
+  {% endif %}
+
+  {% if current_user['role'] == 'admin' %}
+    <section class="admin-section" id="team">
+      <div class="dashboard-section-title"><div><p class="eyebrow">Управление доступом</p><h2>Команда портала</h2></div><span class="section-caption">Администратор</span></div>
+      <div class="user-table-wrap"><table class="user-table"><thead><tr><th>Пользователь</th><th>Email</th><th>Роль</th><th>Действие</th></tr></thead><tbody>
+        {% for user in users %}
+          <tr><td class="member-name">{{ user['name'] }}</td><td>{{ user['email'] }}</td><td><span class="role-pill role-pill-{{ user['role'] }}">{{ 'Модератор' if user['role'] == 'moderator' else 'Пользователь' }}</span></td><td>
+            <form class="role-form" action="{{ url_for('update_role', user_id=user['id']) }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><select name="role" aria-label="Роль для {{ user['name'] }}"><option value="user" {% if user['role'] == 'user' %}selected{% endif %}>Пользователь</option><option value="moderator" {% if user['role'] == 'moderator' %}selected{% endif %}>Модератор</option></select><button type="submit" class="text-link">Сохранить ↗</button></form>
+          </td></tr>
+        {% else %}
+          <tr><td colspan="4" class="table-empty">Пока нет зарегистрированных пользователей.</td></tr>
+        {% endfor %}
+      </tbody></table></div>
+    </section>
+    <section class="admin-section published-section">
+      <div class="dashboard-section-title"><div><p class="eyebrow">Контроль публикаций</p><h2>Новости на сайте</h2></div><span class="section-caption">{{ published|length }} опубликовано</span></div>
+      <div class="published-list">
+        {% for item in published %}<div class="published-row"><div><strong>{{ item['title'] }}</strong><span>{{ item['category'] }} · {{ item['published_at']|date_ru }}</span></div><form action="{{ url_for('remove_news', news_id=item['id']) }}" method="post" onsubmit="return confirm('Снять новость с публикации?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="text-link danger-link" type="submit">Снять ↗</button></form></div>{% endfor %}
+      </div>
+    </section>
+  {% endif %}
+</section>
+{% endblock %}

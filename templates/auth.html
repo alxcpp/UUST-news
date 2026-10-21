@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}{% if mode == 'register' %}Регистрация{% else %}Вход{% endif %} — УУНиТ{% endblock %}
+{% block content %}
+<section class="auth-layout">
+  <div class="auth-aside">
+    <p class="eyebrow"><span class="live-dot"></span> УУНиТ · Новости</p>
+    <h1>{% if mode == 'register' %}Ваш голос<br><em>важен.</em>{% else %}Снова<br><em>в университете.</em>{% endif %}</h1>
+    <p>{% if mode == 'register' %}Создайте аккаунт, чтобы предлагать новости и участвовать в жизни сообщества.{% else %}Войдите, чтобы делиться новостями и обсуждать события университета.{% endif %}</p>
+    <div class="auth-aside-note"><span>У</span><small>Уфимский университет<br>науки и технологий</small></div>
+  </div>
+  <div class="auth-panel">
+    <div class="auth-panel-heading"><p class="eyebrow">Личный кабинет</p><h2>{% if mode == 'register' %}Создать аккаунт{% else %}Войти в аккаунт{% endif %}</h2></div>
+    <form method="post" class="stack-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% if mode == 'register' %}
+        <label>Ваше имя<input type="text" name="name" autocomplete="name" required minlength="2" maxlength="80" placeholder="Например, Анна"></label>
+      {% endif %}
+      <label>Email<input type="email" name="email" autocomplete="email" required placeholder="name@example.com"></label>
+      <label>Пароль<input type="password" name="password" autocomplete="{% if mode == 'register' %}new-password{% else %}current-password{% endif %}" required {% if mode == 'register' %}minlength="8"{% endif %} placeholder="{% if mode == 'register' %}Не менее 8 символов{% else %}Введите пароль{% endif %}"></label>
+      <button class="button button-red auth-submit" type="submit">{% if mode == 'register' %}Зарегистрироваться{% else %}Войти{% endif %}<span aria-hidden="true">↗</span></button>
+    </form>
+    <p class="auth-switch">{% if mode == 'register' %}Уже есть аккаунт? <a href="{{ url_for('login') }}">Войти</a>{% else %}Впервые здесь? <a href="{{ url_for('register') }}">Создать аккаунт</a>{% endif %}</p>
+    {% if mode == 'register' %}<p class="auth-footnote">При регистрации создаётся обычный пользовательский аккаунт.</p>{% endif %}
+  </div>
+</section>
+{% endblock %}
