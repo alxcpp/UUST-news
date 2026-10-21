@@ -72,6 +72,46 @@
     };
     themeToggle.addEventListener('click', () => setTheme(document.documentElement.dataset.theme !== 'dark'));
     if (document.documentElement.dataset.theme === 'dark') setTheme(true);
+    const correctedFields = ['title', 'excerpt', 'content'];
+    const copyText = async (text, button) => {
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch {
+        const temporary = document.createElement('textarea');
+        temporary.value = text;
+        temporary.style.position = 'fixed';
+        temporary.style.opacity = '0';
+        document.body.append(temporary);
+        temporary.select();
+        document.execCommand('copy');
+        temporary.remove();
+      }
+      const originalText = button.textContent;
+      button.textContent = 'Скопировано';
+      window.setTimeout(() => { button.textContent = originalText; }, 1600);
+    };
+    document.querySelectorAll('[data-copy-field]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const field = document.querySelector(`[data-corrected-field="${button.dataset.copyField}"]`);
+        if (field) copyText(field.value, button);
+      });
+    });
+    document.querySelectorAll('[data-copy-all]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const text = correctedFields.map((name) => document.querySelector(`[data-corrected-field="${name}"]`)?.value || '').filter(Boolean).join('\n\n');
+        copyText(text, button);
+      });
+    });
+    document.querySelectorAll('[data-apply-corrections]').forEach((button) => {
+      button.addEventListener('click', () => {
+        correctedFields.forEach((name) => {
+          const source = document.querySelector(`[data-corrected-field="${name}"]`);
+          const target = document.querySelector(`[name="${name}"]`);
+          if (source && target) target.value = source.value;
+        });
+        button.closest('dialog').close();
+      });
+    });
     document.querySelectorAll('[data-dialog-open]').forEach((button) => {
       button.addEventListener('click', () => document.getElementById(button.dataset.dialogOpen).showModal());
     });

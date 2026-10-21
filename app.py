@@ -1,10 +1,13 @@
 import hmac
+import json
 import os
 import secrets
 import sqlite3
 from datetime import datetime, timezone
 from functools import wraps
 from pathlib import Path
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
 from flask import Flask, abort, flash, g, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -18,6 +21,8 @@ app = Flask(__name__)
 app.config.update(
     SECRET_KEY=os.environ.get("SECRET_KEY", "local-development-key-change-before-deploying"),
     DATABASE=os.environ.get("DATABASE", str(INSTANCE_DIR / "uust_news.db")),
+    LANGUAGETOOL_URL=os.environ.get("LANGUAGETOOL_URL", "https://api.languagetool.org/v2/check"),
+    GRAMMAR_CHECK_TIMEOUT=6,
 )
 
 
@@ -79,6 +84,9 @@ def init_db():
         );
         """
     )
+    news_columns = {row[1] for row in db.execute("PRAGMA table_info(news)")}
+    if "grammar_result" not in news_columns:
+        db.execute("ALTER TABLE news ADD COLUMN grammar_result TEXT NOT NULL DEFAULT ''")
 
     admin_email = "admin@uust.local"
     admin = db.execute("SELECT id FROM users WHERE email = ?", (admin_email,)).fetchone()
@@ -187,6 +195,79 @@ def date_ru(value):
         return value
 
 
+@app.template_filter("from_json")
+def from_json(value):
+    try:
+        return json.loads(value) if value else None
+    except (TypeError, json.JSONDecodeError):
+        return None
+
+
+def check_grammar(title, excerpt, content):
+    sections = [("title", title), ("excerpt", excerpt), ("content", content)]
+    spans = []
+    chunks = []
+    offset = 0
+    for field, text in sections:
+        if chunks:
+            chunks.append("\n\n")
+            offset += 2
+        spans.append((field, text, offset, offset + len(text)))
+        chunks.append(text)
+        offset += len(text)
+    text = "".join(chunks)
+    body = urlencode({"text": text, "language": "ru-RU"}).encode("utf-8")
+    check_request = Request(
+        app.config["LANGUAGETOOL_URL"],
+        data=body,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    try:
+        with urlopen(check_request, timeout=app.config["GRAMMAR_CHECK_TIMEOUT"]) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (OSError, TimeoutError, ValueError, KeyError, TypeError):
+        return {"status": "unavailable", "matches": []}
+
+    matches = []
+    edits_by_field = {field: [] for field, _ in sections}
+    for match in payload.get("matches", [])[:50]:
+        match_offset = match.get("offset", 0)
+        section = next(
+            (item for item in spans if item[2] <= match_offset <= item[3]),
+            None,
+        )
+        if section is None:
+            continue
+        field, section_text, start, end = section
+        local_offset = max(0, min(match_offset - start, len(section_text)))
+        match_length = max(0, min(match.get("length", 0), len(section_text) - local_offset))
+        context_start = max(0, local_offset - 35)
+        context_end = min(len(section_text), local_offset + match_length + 35)
+        suggestions = [item["value"] for item in match.get("replacements", [])[:5] if item.get("value")]
+        matches.append(
+            {
+                "field": field,
+                "fragment": section_text[context_start:context_end],
+                "message": match.get("message", "Возможная ошибка"),
+                "suggestions": suggestions,
+            }
+        )
+        if suggestions and match_length:
+            edits_by_field[field].append((local_offset, match_length, suggestions[0]))
+
+    corrected = {}
+    originals = dict(sections)
+    for field, original in sections:
+        revised = original
+        last_edit_start = len(original) + 1
+        for local_offset, match_length, replacement in sorted(edits_by_field[field], reverse=True):
+            if local_offset + match_length <= last_edit_start:
+                revised = revised[:local_offset] + replacement + revised[local_offset + match_length:]
+                last_edit_start = local_offset
+        corrected[field] = revised
+    return {"status": "checked", "matches": matches, "corrected": corrected}
+
+
 @app.route("/")
 def index():
     db = get_db()
@@ -285,13 +366,30 @@ def submit_proposal():
         flash("Проверьте категорию и ссылку на изображение.", "error")
     else:
         db = get_db()
+        grammar_result = check_grammar(title, excerpt, content)
         db.execute(
-            """INSERT INTO news (title, excerpt, content, category, image_url, author_id)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (title, excerpt, content, category, image_url, current_user()["id"]),
+            """INSERT INTO news (title, excerpt, content, category, image_url, author_id, grammar_result)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                title,
+                excerpt,
+                content,
+                category,
+                image_url,
+                current_user()["id"],
+                json.dumps(grammar_result, ensure_ascii=False),
+            ),
         )
         db.commit()
-        flash("Предложение отправлено на проверку.", "success")
+        if grammar_result["status"] == "unavailable":
+            flash("Предложение отправлено. Автопроверка временно недоступна, редакция проверит текст вручную.", "info")
+        elif grammar_result["matches"]:
+            flash(
+                f"Предложение отправлено. Автопроверка нашла замечания: {len(grammar_result['matches'])}.",
+                "info",
+            )
+        else:
+            flash("Предложение отправлено. Автопроверка не нашла замечаний.", "success")
     return redirect(url_for("index"))
 
 
@@ -376,6 +474,56 @@ def moderation():
             "SELECT id, title, category, published_at FROM news WHERE status = 'published' ORDER BY published_at DESC"
         ).fetchall()
     return render_template("moderation.html", pending=pending, users=users, published=published)
+
+
+@app.route("/moderation/<int:news_id>/edit", methods=["GET", "POST"])
+@roles_required("moderator", "admin")
+def edit_proposal(news_id):
+    db = get_db()
+    proposal = db.execute(
+        "SELECT * FROM news WHERE id = ? AND status = 'pending'",
+        (news_id,),
+    ).fetchone()
+    if proposal is None:
+        abort(404)
+
+    if request.method == "POST":
+        title = request.form.get("title", "").strip()
+        excerpt = request.form.get("excerpt", "").strip()
+        content = request.form.get("content", "").strip()
+        category = request.form.get("category", "").strip()
+        image_url = request.form.get("image_url", "").strip()
+        allowed_categories = {"Университет", "Наука", "Студентам", "Кампус"}
+        valid_text = 4 <= len(title) <= 150 and 10 <= len(excerpt) <= 260 and 30 <= len(content) <= 8000
+        valid_image = not image_url or image_url.startswith(("https://", "http://"))
+        if not valid_text:
+            flash("Проверьте заголовок, краткое описание и текст новости.", "error")
+        elif category not in allowed_categories or not valid_image:
+            flash("Проверьте категорию и ссылку на изображение.", "error")
+        else:
+            grammar_result = check_grammar(title, excerpt, content)
+            cursor = db.execute(
+                """UPDATE news SET title = ?, excerpt = ?, content = ?, category = ?, image_url = ?, grammar_result = ?
+                   WHERE id = ? AND status = 'pending'""",
+                (
+                    title,
+                    excerpt,
+                    content,
+                    category,
+                    image_url,
+                    json.dumps(grammar_result, ensure_ascii=False),
+                    news_id,
+                ),
+            )
+            db.commit()
+            if cursor.rowcount:
+                flash("Предложение обновлено. Результат проверки грамматики обновлён.", "success")
+            else:
+                flash("Предложение уже обработано и больше не доступно для редактирования.", "info")
+            return redirect(url_for("moderation"))
+        return render_template("proposal_edit.html", article=proposal, values=request.form)
+
+    return render_template("proposal_edit.html", article=proposal, values={})
 
 
 @app.post("/moderation/<int:news_id>/<action>")
