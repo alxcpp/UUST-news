@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Мои интересы — УУНиТ{% endblock %}
+{% block content %}
+<section class="proposal-edit-page">
+  <form method="post" class="proposal-edit-form stack-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <p class="eyebrow">Персональные уведомления</p>
+    <h1>Выберите интересующие категории</h1>
+    <p class="preferences-intro">В колокольчике появятся новые публикации из выбранных категорий.</p>
+    <fieldset class="interest-picker">
+      <legend>Категории</legend>
+      <div class="interest-options">
+        {% for category in news_categories %}
+          <label class="interest-option">
+            <input type="checkbox" name="interests" value="{{ category }}" {% if category in selected_categories %}checked{% endif %}>
+            <span>{{ category }}</span>
+          </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    <button class="button button-red" type="submit">Сохранить интересы <span aria-hidden="true">↗</span></button>
+  </form>
+</section>
+{% endblock %}

@@ -9,7 +9,7 @@
     <p class="article-deck">{{ article['excerpt'] }}</p>
     <div class="byline">{{ article['author_name'] }} <span>·</span> УУНиТ</div>
   </div>
-  {% if article['content_type'] == 'event' %}<p class="event-details"><strong>Когда:</strong> {{ article['event_date']|date_ru }} <span>·</span> <strong>Где:</strong> {{ article['event_location'] }}</p>{% endif %}
+  {% if article['event_date'] or article['event_time'] or article['event_location'] %}<p class="event-details">{% if article['event_date'] or article['event_time'] %}<strong>Когда:</strong> {{ article['event_date']|date_ru }}{% if article['event_time'] %}, начало в {{ article['event_time'] }}{% endif %}{% endif %}{% if article['event_location'] %} <span>·</span> <strong>Где:</strong> {{ article['event_location'] }}{% endif %}</p>{% endif %}
   {% if article['image_url'] %}<img class="article-image" src="{{ article['image_url'] }}" alt="Иллюстрация к новости: {{ article['title'] }}">{% endif %}
   <div class="article-body-layout">
     <div class="article-content">{% for paragraph in article['content'].split('\n\n') %}<p>{{ paragraph }}</p>{% endfor %}</div>

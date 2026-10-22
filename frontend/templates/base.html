@@ -19,7 +19,7 @@
   <div class="topline"></div>
   <header class="site-header">
     <a class="brand" href="{{ url_for('index') }}" aria-label="УУНиТ, главная">
-      <span class="brand-mark">У</span>
+      <img class="brand-mark" src="{{ url_for('static', filename='images/uust-logo.png') }}" alt="Логотип УУНиТ">
       <span class="brand-copy"><strong>УУНиТ</strong><small>Университетские новости</small></span>
     </a>
     <nav class="main-nav" aria-label="Основная навигация">
@@ -31,6 +31,37 @@
     <div class="header-actions">
       <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Включить тёмную тему" title="Переключить тему"><span aria-hidden="true">☾</span></button>
       {% if current_user %}
+        <div class="notification-menu">
+          <button class="notification-toggle" id="notification-toggle" type="button" aria-label="Уведомления{% if unread_notifications %}, непрочитано {{ unread_notifications }}{% endif %}" aria-expanded="false" aria-controls="notification-panel">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>
+            {% if unread_notifications %}<span class="notification-count">{{ unread_notifications }}</span>{% endif %}
+          </button>
+          <section class="notification-panel" id="notification-panel" aria-label="Уведомления" hidden>
+            <div class="notification-heading"><strong>Публикации по интересам</strong><span>{{ unread_notifications }}</span></div>
+            {% if notifications %}
+              <ul class="notification-list">
+                {% for notification in notifications %}
+                  <li class="{% if not notification['read_at'] %}is-unread{% endif %}">
+                    <a href="{{ url_for('news_detail', news_id=notification['news_id']) }}">
+                      <span>{{ notification['category'] }}{% if notification['content_type'] == 'event' %} · Мероприятие{% endif %}</span>
+                      <strong>{{ notification['title'] }}</strong>
+                      <time>{{ notification['created_at']|date_ru }}</time>
+                    </a>
+                  </li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <p class="notification-empty">Пока нет новых публикаций в выбранных категориях.</p>
+            {% endif %}
+            {% if unread_notifications %}
+              <form action="{{ url_for('mark_notifications_read') }}" method="post" class="notification-read-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit">Отметить всё прочитанным</button>
+              </form>
+            {% endif %}
+            <a class="notification-preferences" href="{{ url_for('preferences') }}">Настроить категории интересов ↗</a>
+          </section>
+        </div>
         <span class="user-greeting">{{ current_user['name'] }}</span>
         <span class="role-dot role-{{ current_user['role'] }}" title="{{ {'user': 'Пользователь', 'moderator': 'Модератор', 'admin': 'Администратор'}[current_user['role']] }}"></span>
         <form action="{{ url_for('logout') }}" method="post" class="inline-form">
@@ -61,6 +92,9 @@
     <span class="footer-year">Информационная лента университета</span>
   </footer>
   <script>
+    document.querySelectorAll('.flash').forEach((message) => {
+      window.setTimeout(() => message.remove(), 4000);
+    });
     const themeToggle = document.getElementById('theme-toggle');
     const setTheme = (dark) => {
       document.documentElement.dataset.theme = dark ? 'dark' : 'light';
@@ -72,6 +106,23 @@
     };
     themeToggle.addEventListener('click', () => setTheme(document.documentElement.dataset.theme !== 'dark'));
     if (document.documentElement.dataset.theme === 'dark') setTheme(true);
+    const notificationToggle = document.getElementById('notification-toggle');
+    const notificationPanel = document.getElementById('notification-panel');
+    if (notificationToggle && notificationPanel) {
+      const setNotificationsOpen = (open) => {
+        notificationPanel.hidden = !open;
+        notificationToggle.setAttribute('aria-expanded', String(open));
+      };
+      notificationToggle.addEventListener('click', () => {
+        setNotificationsOpen(notificationPanel.hidden);
+      });
+      document.addEventListener('click', (event) => {
+        if (!event.target.closest('.notification-menu')) setNotificationsOpen(false);
+      });
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') setNotificationsOpen(false);
+      });
+    }
     const correctedFields = ['title', 'excerpt', 'content'];
     const copyText = async (text, button) => {
       try {
@@ -122,7 +173,6 @@
       const eventFields = select.form.querySelector('[data-event-fields]');
       const updateEventFields = () => {
         const isEvent = select.value === 'event';
-        eventFields.hidden = !isEvent;
         eventFields.querySelectorAll('input').forEach((input) => { input.required = isEvent; });
       };
       select.addEventListener('change', updateEventFields);

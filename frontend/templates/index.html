@@ -14,7 +14,7 @@
     <div class="category-list" aria-label="Категории новостей">
       <a class="category-chip {% if not category %}selected{% endif %}" href="{{ url_for('index') }}">Все новости</a>
       {% for item in categories %}
-        <a class="category-chip {% if category == item['category'] %}selected{% endif %}" href="{{ url_for('index', category=item['category']) }}">{{ item['category'] }}</a>
+        <a class="category-chip {% if category == item %}selected{% endif %}" href="{{ url_for('index', category=item) }}">{{ item }}</a>
       {% endfor %}
     </div>
     <form class="search-form" action="{{ url_for('index') }}" method="get">
@@ -35,7 +35,7 @@
         <div class="story-meta"><span>{{ 'Мероприятие' if lead['content_type'] == 'event' else lead['category'] }}</span><span>{{ lead['published_at']|date_ru }}</span></div>
         <h2><a href="{{ url_for('news_detail', news_id=lead['id']) }}">{{ lead['title'] }}</a></h2>
         <p>{{ lead['excerpt'] }}</p>
-        {% if lead['content_type'] == 'event' %}<p class="event-summary">{{ lead['event_date']|date_ru }} · {{ lead['event_location'] }}</p>{% endif %}
+        {% if lead['event_date'] or lead['event_time'] or lead['event_location'] %}<p class="event-summary">{{ lead['event_date']|date_ru }}{% if lead['event_time'] %} · начало в {{ lead['event_time'] }}{% endif %}{% if lead['event_location'] %} · {{ lead['event_location'] }}{% endif %}</p>{% endif %}
         <div class="lead-bottom">
           <span class="byline">{{ lead['author_name'] }}</span>
           <a class="text-link" href="{{ url_for('news_detail', news_id=lead['id']) }}">Читать новость <span aria-hidden="true">↗</span></a>
@@ -48,27 +48,26 @@
       <span>{{ articles|length }} публикаций</span>
     </div>
     {% if articles|length > 1 %}
-      <div class="news-grid">
+      <div class="news-list">
         {% for article in articles[1:] %}
-          <article class="news-card">
-            <a class="card-image" href="{{ url_for('news_detail', news_id=article['id']) }}" {% if article['image_url'] %}style="--story-image: url('{{ article['image_url'] }}')"{% endif %} aria-label="Читать: {{ article['title'] }}"></a>
-            <div class="card-body">
-              <div class="story-meta"><span>{{ 'Мероприятие' if article['content_type'] == 'event' else article['category'] }}</span><span>{{ article['published_at']|date_ru }}</span></div>
-              <h3><a href="{{ url_for('news_detail', news_id=article['id']) }}">{{ article['title'] }}</a></h3>
-              <p>{{ article['excerpt'] }}</p>
-              {% if article['content_type'] == 'event' %}<p class="event-summary">{{ article['event_date']|date_ru }} · {{ article['event_location'] }}</p>{% endif %}
-              <div class="card-footer"><span>{{ article['author_name'] }}</span><span class="engagement">♡ {{ article['like_count'] }} <span>·</span> {{ article['comment_count'] }} комм.</span></div>
+          <article class="news-row">
+            <div class="news-row-meta">
+              <time>{{ article['published_at']|date_ru }}</time>
+              <span>{{ 'Мероприятие · ' if article['content_type'] == 'event' else '' }}{{ article['category'] }}</span>
             </div>
+            <h3><a href="{{ url_for('news_detail', news_id=article['id']) }}">{{ article['title'] }}</a></h3>
+            <p>{{ article['excerpt'] }}</p>
+            {% if article['event_date'] or article['event_time'] or article['event_location'] %}<p class="event-summary">{{ article['event_date']|date_ru }}{% if article['event_time'] %} · начало в {{ article['event_time'] }}{% endif %}{% if article['event_location'] %} · {{ article['event_location'] }}{% endif %}</p>{% endif %}
           </article>
         {% endfor %}
       </div>
     {% endif %}
   {% else %}
-    <div class="empty-state"><span class="empty-mark">У</span><h2>Пока ничего не найдено</h2><p>Попробуйте изменить запрос или выбрать другую категорию.</p><a class="text-link" href="{{ url_for('index') }}">Сбросить фильтры ↗</a></div>
+    <div class="empty-state"><img class="empty-mark" src="{{ url_for('static', filename='images/uust-logo-mark.svg') }}" alt="Логотип УУНиТ"><h2>Пока ничего не найдено</h2><p>Попробуйте изменить запрос или выбрать другую категорию.</p><a class="text-link" href="{{ url_for('index') }}">Сбросить фильтры ↗</a></div>
   {% endif %}
 
   <section class="contribute-band">
-    <div class="contribute-mark">У</div>
+    <img class="contribute-mark" src="{{ url_for('static', filename='images/uust-logo-mark.svg') }}" alt="Логотип УУНиТ">
     <div><p class="eyebrow">Голос университета</p><h2>Есть чем поделиться?</h2><p>Предложите статью или мероприятие — редакция проверит перед публикацией.</p></div>
     {% if current_user %}
       <button class="button button-white" type="button" data-dialog-open="proposal-dialog">Предложить публикацию <span aria-hidden="true">↗</span></button>
@@ -87,12 +86,16 @@
     <label>Заголовок<input name="title" maxlength="150" required minlength="4" placeholder="О чём новость?"></label>
     <label>Коротко<textarea name="excerpt" rows="2" maxlength="260" required minlength="10" placeholder="Краткое описание для ленты"></textarea></label>
     <label>Текст публикации<textarea name="content" rows="5" required minlength="30" placeholder="Расскажите подробности"></textarea></label>
-    <div class="form-row" data-event-fields hidden>
-      <label>Дата мероприятия<input name="event_date" type="date"></label>
-      <label>Место проведения<input name="event_location" maxlength="160" placeholder="Корпус, аудитория или адрес"></label>
-    </div>
+    <section class="event-info-block" data-event-fields>
+      <div class="event-info-heading"><strong>Данные мероприятия</strong><span>Заполните, если это мероприятие</span></div>
+      <div class="form-row event-form-row">
+        <label>Дата проведения<input name="event_date" type="date"></label>
+        <label>Время начала<input name="event_time" type="time"></label>
+        <label>Адрес / место проведения<input name="event_location" maxlength="160" placeholder="Город, улица, корпус, аудитория"></label>
+      </div>
+    </section>
     <div class="form-row">
-      <label>Раздел<select name="category"><option>Университет</option><option>Наука</option><option>Студентам</option><option>Кампус</option><option>Мероприятия</option></select></label>
+      <label>Раздел<select name="category">{% for category in news_categories %}<option>{{ category }}</option>{% endfor %}</select></label>
       <label>Ссылка на фото <span class="optional">необязательно</span><input name="image_url" type="text" placeholder="https://"></label>
     </div>
     <label>Или загрузите фото <span class="optional">JPG, PNG или WEBP, до 8 МБ</span><input name="image" type="file" accept="image/jpeg,image/png,image/webp"></label>

@@ -17,7 +17,7 @@
           </summary>
           <div class="pending-body">
           <p class="pending-excerpt">{{ item['excerpt'] }}</p><p class="pending-content">{{ item['content'] }}</p>
-          {% if item['content_type'] == 'event' %}<p class="event-details"><strong>Дата:</strong> {{ item['event_date']|date_ru }} <span>·</span> <strong>Место:</strong> {{ item['event_location'] }}</p>{% endif %}
+          {% if item['event_date'] or item['event_time'] or item['event_location'] %}<p class="event-details">{% if item['event_date'] %}<strong>Дата:</strong> {{ item['event_date']|date_ru }}{% endif %}{% if item['event_time'] %} <span>·</span> <strong>Начало:</strong> {{ item['event_time'] }}{% endif %}{% if item['event_location'] %} <span>·</span> <strong>Место:</strong> {{ item['event_location'] }}{% endif %}</p>{% endif %}
           {% set report = item['grammar_result']|from_json %}
           {% set semantic = report.get('semantic') if report else none %}
           <section class="semantic-review" aria-label="Результаты проверки ИИ">

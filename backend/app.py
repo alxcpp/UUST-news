@@ -19,6 +19,17 @@ from backend.uploads import ImageUploadError, save_uploaded_image
 BASE_DIR = Path(__file__).resolve().parent.parent
 INSTANCE_DIR = BASE_DIR / "instance"
 INSTANCE_DIR.mkdir(exist_ok=True)
+NEWS_CATEGORIES = (
+    "Университет",
+    "Наука",
+    "IT и технологии",
+    "Студентам",
+    "Карьера и стажировки",
+    "Культура и творчество",
+    "Спорт",
+    "Кампус",
+    "Объявления",
+)
 
 app = Flask(
     __name__,
@@ -28,6 +39,7 @@ app = Flask(
 )
 app.config.update(
     SECRET_KEY=os.environ.get("SECRET_KEY", "local-development-key-change-before-deploying"),
+    SESSION_COOKIE_SECURE=os.environ.get("SESSION_COOKIE_SECURE", "0") == "1",
     DATABASE=os.environ.get("DATABASE", str(INSTANCE_DIR / "uust_news.db")),
     UPLOAD_FOLDER=str(INSTANCE_DIR / "uploads"),
     MAX_CONTENT_LENGTH=9 * 1024 * 1024,
@@ -43,6 +55,11 @@ app.config.update(
     ),
     GEMINI_TIMEOUT=45,
 )
+
+
+@app.context_processor
+def inject_news_categories():
+    return {"news_categories": NEWS_CATEGORIES}
 
 
 @app.get("/uploads/<path:filename>")
@@ -89,6 +106,7 @@ def init_db():
             image_url TEXT NOT NULL DEFAULT '',
             content_type TEXT NOT NULL DEFAULT 'article' CHECK (content_type IN ('article', 'event')),
             event_date TEXT,
+            event_time TEXT,
             event_location TEXT,
             author_id INTEGER NOT NULL REFERENCES users(id),
             status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'published', 'rejected')),
@@ -109,17 +127,39 @@ def init_db():
             body TEXT NOT NULL CHECK (length(body) <= 1200),
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
+        CREATE TABLE IF NOT EXISTS user_categories (
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            category TEXT NOT NULL,
+            PRIMARY KEY (user_id, category)
+        );
+        CREATE INDEX IF NOT EXISTS user_categories_category
+            ON user_categories (category);
+        CREATE TABLE IF NOT EXISTS notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            news_id INTEGER NOT NULL REFERENCES news(id) ON DELETE CASCADE,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            read_at TEXT,
+            viewed_at TEXT,
+            UNIQUE (user_id, news_id)
+        );
+        CREATE INDEX IF NOT EXISTS notifications_user_created
+            ON notifications (user_id, created_at DESC);
         """
     )
     news_columns = {row[1] for row in db.execute("PRAGMA table_info(news)")}
     for column, definition in (
         ("content_type", "TEXT NOT NULL DEFAULT 'article' CHECK (content_type IN ('article', 'event'))"),
         ("event_date", "TEXT"),
+        ("event_time", "TEXT"),
         ("event_location", "TEXT"),
         ("grammar_result", "TEXT NOT NULL DEFAULT ''"),
     ):
         if column not in news_columns:
             db.execute(f"ALTER TABLE news ADD COLUMN {column} {definition}")
+    notification_columns = {row[1] for row in db.execute("PRAGMA table_info(notifications)")}
+    if "viewed_at" not in notification_columns:
+        db.execute("ALTER TABLE notifications ADD COLUMN viewed_at TEXT")
     for row in db.execute("SELECT id, grammar_result FROM news WHERE grammar_result != ''"):
         try:
             report = json.loads(row["grammar_result"])
@@ -223,7 +263,30 @@ def inject_template_values():
             session["_csrf_token"] = secrets.token_urlsafe(32)
         return session["_csrf_token"]
 
-    return {"current_user": current_user(), "csrf_token": csrf_token, "now": datetime.now(timezone.utc)}
+    user = current_user()
+    notifications = []
+    unread_notifications = 0
+    if user:
+        db = get_db()
+        notifications = db.execute(
+            """SELECT notifications.id, notifications.read_at, notifications.created_at,
+                      news.id AS news_id, news.title, news.category, news.content_type
+               FROM notifications JOIN news ON news.id = notifications.news_id
+               WHERE notifications.user_id = ? AND notifications.read_at IS NULL
+               ORDER BY notifications.created_at DESC, notifications.id DESC""",
+            (user["id"],),
+        ).fetchall()
+        unread_notifications = db.execute(
+            "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND read_at IS NULL",
+            (user["id"],),
+        ).fetchone()[0]
+    return {
+        "current_user": user,
+        "csrf_token": csrf_token,
+        "now": datetime.now(timezone.utc),
+        "notifications": notifications,
+        "unread_notifications": unread_notifications,
+    }
 
 
 @app.template_filter("date_ru")
@@ -432,9 +495,7 @@ def index():
             WHERE {where} ORDER BY published_at DESC, id DESC""",
         params,
     ).fetchall()
-    categories = db.execute(
-        "SELECT DISTINCT category FROM news WHERE status = 'published' ORDER BY category"
-    ).fetchall()
+    categories = NEWS_CATEGORIES
     return render_template("index.html", articles=articles, categories=categories, category=category, search=search)
 
 
@@ -442,18 +503,36 @@ def index():
 def register():
     if current_user():
         return redirect(url_for("index"))
+    selected_categories = []
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
-        if len(name) < 2 or len(name) > 80 or "@" not in email or len(password) < 8:
-            flash("Проверьте имя, email и пароль (не менее 8 символов).", "error")
+        selected_categories = request.form.getlist("interests")
+        valid_categories = bool(selected_categories) and all(
+            category in NEWS_CATEGORIES for category in selected_categories
+        )
+        if (
+            len(name) < 2
+            or len(name) > 80
+            or "@" not in email
+            or len(password) < 8
+            or not valid_categories
+        ):
+            flash(
+                "Проверьте имя, email, пароль (не менее 8 символов) и выберите хотя бы одну категорию.",
+                "error",
+            )
         else:
             try:
                 db = get_db()
-                db.execute(
+                cursor = db.execute(
                     "INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)",
                     (name, email, generate_password_hash(password)),
+                )
+                db.executemany(
+                    "INSERT INTO user_categories (user_id, category) VALUES (?, ?)",
+                    [(cursor.lastrowid, category) for category in dict.fromkeys(selected_categories)],
                 )
                 db.commit()
                 user = db.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
@@ -463,7 +542,41 @@ def register():
                 return redirect(url_for("index"))
             except sqlite3.IntegrityError:
                 flash("Аккаунт с таким email уже существует.", "error")
-    return render_template("auth.html", mode="register")
+    return render_template(
+        "auth.html", mode="register", selected_categories=selected_categories
+    )
+
+
+@app.route("/preferences", methods=["GET", "POST"])
+@login_required
+def preferences():
+    db = get_db()
+    user_id = current_user()["id"]
+    selected_categories = [
+        row["category"]
+        for row in db.execute(
+            "SELECT category FROM user_categories WHERE user_id = ? ORDER BY category",
+            (user_id,),
+        ).fetchall()
+    ]
+    if request.method == "POST":
+        selected_categories = request.form.getlist("interests")
+        if not selected_categories or any(
+            category not in NEWS_CATEGORIES for category in selected_categories
+        ):
+            flash("Выберите хотя бы одну корректную категорию.", "error")
+        else:
+            db.execute("DELETE FROM user_categories WHERE user_id = ?", (user_id,))
+            db.executemany(
+                "INSERT INTO user_categories (user_id, category) VALUES (?, ?)",
+                [(user_id, category) for category in dict.fromkeys(selected_categories)],
+            )
+            db.commit()
+            flash("Интересующие категории сохранены.", "success")
+            return redirect(url_for("preferences"))
+    return render_template(
+        "preferences.html", selected_categories=selected_categories
+    )
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -492,6 +605,19 @@ def logout():
     return redirect(url_for("index"))
 
 
+@app.post("/notifications/read")
+@login_required
+def mark_notifications_read():
+    db = get_db()
+    db.execute(
+        """UPDATE notifications SET read_at = ?
+           WHERE user_id = ? AND read_at IS NULL""",
+        (datetime.now(timezone.utc).isoformat(timespec="seconds"), current_user()["id"]),
+    )
+    db.commit()
+    return redirect(url_for("index"))
+
+
 @app.post("/proposals")
 @login_required
 def submit_proposal():
@@ -504,22 +630,25 @@ def submit_proposal():
     has_image_file = bool(image_file and image_file.filename)
     content_type = request.form.get("content_type", "article")
     event_date = request.form.get("event_date", "").strip()
+    event_time = request.form.get("event_time", "").strip()
     event_location = request.form.get("event_location", "").strip()
-    allowed_categories = {"Университет", "Наука", "Студентам", "Кампус", "Мероприятия"}
+    if any((event_date, event_time, event_location)):
+        content_type = "event"
     valid_image = has_image_file or not image_url or image_url.startswith(("https://", "http://", "/uploads/"))
     valid_type = content_type in {"article", "event"}
     valid_event = True
     if content_type == "event":
         try:
             datetime.strptime(event_date, "%Y-%m-%d")
+            datetime.strptime(event_time, "%H:%M")
         except ValueError:
             valid_event = False
         valid_event = valid_event and 2 <= len(event_location) <= 160
     if not (4 <= len(title) <= 150 and 10 <= len(excerpt) <= 260 and 30 <= len(content) <= 8000):
         flash("Заполните заголовок, краткое описание и текст новости.", "error")
     elif not valid_type or not valid_event:
-        flash("Для мероприятия укажите корректные дату и место проведения.", "error")
-    elif category not in allowed_categories or not valid_image:
+        flash("Для мероприятия укажите корректные дату, время начала и место проведения.", "error")
+    elif category not in NEWS_CATEGORIES or not valid_image:
         flash("Проверьте категорию и ссылку на изображение.", "error")
     else:
         try:
@@ -532,8 +661,8 @@ def submit_proposal():
         grammar_result = check_text(title, excerpt, content)
         db.execute(
             """INSERT INTO news
-               (title, excerpt, content, category, image_url, content_type, event_date, event_location, author_id, grammar_result)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               (title, excerpt, content, category, image_url, content_type, event_date, event_time, event_location, author_id, grammar_result)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 title,
                 excerpt,
@@ -542,6 +671,7 @@ def submit_proposal():
                 image_url,
                 content_type,
                 event_date if content_type == "event" else None,
+                event_time if content_type == "event" else None,
                 event_location if content_type == "event" else None,
                 current_user()["id"],
                 json.dumps(grammar_result, ensure_ascii=False),
@@ -584,6 +714,15 @@ def news_detail(news_id):
     ).fetchone()
     if article is None:
         abort(404)
+    user = current_user()
+    if user:
+        read_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        db.execute(
+            """UPDATE notifications SET read_at = COALESCE(read_at, ?)
+               WHERE user_id = ? AND news_id = ?""",
+            (read_at, user["id"], news_id),
+        )
+        db.commit()
     comments = db.execute(
         """SELECT comments.*, users.name AS author_name FROM comments
            JOIN users ON users.id = comments.user_id WHERE news_id = ?
@@ -591,10 +730,10 @@ def news_detail(news_id):
         (news_id,),
     ).fetchall()
     liked = False
-    if current_user():
+    if user:
         liked = db.execute(
             "SELECT 1 FROM likes WHERE user_id = ? AND news_id = ?",
-            (current_user()["id"], news_id),
+            (user["id"], news_id),
         ).fetchone() is not None
     return render_template("news.html", article=article, comments=comments, liked=liked)
 
@@ -698,8 +837,10 @@ def _edit_news(news_id, expected_status):
         has_image_file = bool(image_file and image_file.filename)
         content_type = request.form.get("content_type", proposal["content_type"])
         event_date = request.form.get("event_date", "").strip()
+        event_time = request.form.get("event_time", "").strip()
         event_location = request.form.get("event_location", "").strip()
-        allowed_categories = {"Университет", "Наука", "Студентам", "Кампус", "Мероприятия"}
+        if any((event_date, event_time, event_location)):
+            content_type = "event"
         valid_text = 4 <= len(title) <= 150 and 10 <= len(excerpt) <= 260 and 30 <= len(content) <= 8000
         valid_image = has_image_file or not image_url or image_url.startswith(("https://", "http://", "/uploads/"))
         valid_type = content_type in {"article", "event"}
@@ -707,14 +848,15 @@ def _edit_news(news_id, expected_status):
         if content_type == "event":
             try:
                 datetime.strptime(event_date, "%Y-%m-%d")
+                datetime.strptime(event_time, "%H:%M")
             except ValueError:
                 valid_event = False
             valid_event = valid_event and 2 <= len(event_location) <= 160
         if not valid_text:
             flash("Проверьте заголовок, краткое описание и текст новости.", "error")
         elif not valid_type or not valid_event:
-            flash("Для мероприятия укажите корректные дату и место проведения.", "error")
-        elif category not in allowed_categories or not valid_image:
+            flash("Для мероприятия укажите корректные дату, время начала и место проведения.", "error")
+        elif category not in NEWS_CATEGORIES or not valid_image:
             flash("Проверьте категорию и ссылку на изображение.", "error")
         else:
             try:
@@ -728,7 +870,7 @@ def _edit_news(news_id, expected_status):
             grammar_result = check_text(title, excerpt, content)
             cursor = db.execute(
                 """UPDATE news SET title = ?, excerpt = ?, content = ?, category = ?, image_url = ?,
-                   content_type = ?, event_date = ?, event_location = ?, grammar_result = ?
+                   content_type = ?, event_date = ?, event_time = ?, event_location = ?, grammar_result = ?
                    WHERE id = ? AND status = ?""",
                 (
                     title,
@@ -738,6 +880,7 @@ def _edit_news(news_id, expected_status):
                     image_url,
                     content_type,
                     event_date if content_type == "event" else None,
+                    event_time if content_type == "event" else None,
                     event_location if content_type == "event" else None,
                     json.dumps(grammar_result, ensure_ascii=False),
                     news_id,
@@ -773,6 +916,14 @@ def review_proposal(news_id, action):
            WHERE id = ? AND status = 'pending'""",
         (status, published_at, current_user()["id"], news_id),
     )
+    if cursor.rowcount and action == "approve":
+        db.execute(
+            """INSERT OR IGNORE INTO notifications (user_id, news_id)
+               SELECT user_categories.user_id, news.id
+               FROM news JOIN user_categories ON user_categories.category = news.category
+               WHERE news.id = ?""",
+            (news_id,),
+        )
     db.commit()
     if cursor.rowcount:
         flash("Новость опубликована." if action == "approve" else "Предложение отклонено.", "success")

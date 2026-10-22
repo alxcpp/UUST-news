@@ -1,0 +1,23 @@
+[Unit]
+Description=UUST News Flask application
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/uust-news
+EnvironmentFile=/etc/uust-news.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/uust-news/.venv/bin/gunicorn --preload --workers 2 --timeout 75 --bind 127.0.0.1:8000 --access-logfile - --error-logfile - app:app
+Restart=on-failure
+RestartSec=5
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/uust-news/instance
+
+[Install]
+WantedBy=multi-user.target

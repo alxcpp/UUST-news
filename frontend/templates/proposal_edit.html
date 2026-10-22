@@ -11,13 +11,17 @@
     <label>Заголовок<input name="title" maxlength="150" minlength="4" required value="{{ values.get('title', article['title']) }}"></label>
     <label>Краткое описание<textarea name="excerpt" rows="3" maxlength="260" minlength="10" required>{{ values.get('excerpt', article['excerpt']) }}</textarea></label>
     <label>Текст новости<textarea name="content" rows="9" minlength="30" maxlength="8000" required>{{ values.get('content', article['content']) }}</textarea></label>
-    <div class="form-row" data-event-fields {% if values.get('content_type', article['content_type']) != 'event' %}hidden{% endif %}>
-      <label>Дата мероприятия<input name="event_date" type="date" value="{{ values.get('event_date', article['event_date'] or '') }}"></label>
-      <label>Место проведения<input name="event_location" maxlength="160" value="{{ values.get('event_location', article['event_location'] or '') }}" placeholder="Корпус, аудитория или адрес"></label>
-    </div>
+    <section class="event-info-block" data-event-fields>
+      <div class="event-info-heading"><strong>Данные мероприятия</strong><span>Заполните, если это мероприятие</span></div>
+      <div class="form-row event-form-row">
+        <label>Дата проведения<input name="event_date" type="date" value="{{ values.get('event_date', article['event_date'] or '') }}"></label>
+        <label>Время начала<input name="event_time" type="time" value="{{ values.get('event_time', article['event_time'] or '') }}"></label>
+        <label>Адрес / место проведения<input name="event_location" maxlength="160" value="{{ values.get('event_location', article['event_location'] or '') }}" placeholder="Город, улица, корпус, аудитория"></label>
+      </div>
+    </section>
     <div class="form-row">
       <label>Раздел<select name="category" required>
-        {% for category in ['Университет', 'Наука', 'Студентам', 'Кампус', 'Мероприятия'] %}
+        {% for category in news_categories %}
           <option value="{{ category }}" {% if values.get('category', article['category']) == category %}selected{% endif %}>{{ category }}</option>
         {% endfor %}
       </select></label>

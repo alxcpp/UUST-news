@@ -5,9 +5,11 @@
 ## Возможности
 
 - Регистрация и вход с безопасным хешированием паролей.
+- Выбор интересующих категорий при регистрации и управление ими в личных настройках.
+- Уведомления в колокольчике о новых публикациях в выбранных категориях; уведомления сохраняются, пока пользователь их не прочитает.
 - Роли: пользователь, модератор и администратор. Новые аккаунты всегда создаются с ролью пользователя.
 - Публикация статей и мероприятий зарегистрированными пользователями с обязательной проверкой модератором или администратором.
-- Дата и место проведения для мероприятий; публикации появляются в ленте после одобрения.
+- Дата, время начала и место проведения для мероприятий; публикации появляются в ленте после одобрения.
 - Предложение новости из ленты, редактирование текста перед публикацией и проверка модератором или администратором.
 - Проверка десяти языковых, фактических и смысловых категорий через Gemini API. Результаты видны в очереди; исправленный черновик можно проверить, скопировать или перенести в редактор.
 - Панель администратора для поиска пользователей по email и назначения ролей модератора и администратора.
@@ -43,6 +45,8 @@ flask --app app run --debug
 
 Права проверяются сервером. Форма регистрации не позволяет выбрать привилегированную роль.
 
+Новые уведомления создаются при одобрении публикации и показываются в колокольчике при следующем посещении сайта. Это уведомления внутри сайта, не push-уведомления браузера.
+
 ## Настройки
 
 - `SECRET_KEY` — секрет Flask-сессий. Для развёртывания задайте собственное случайное значение.
@@ -52,6 +56,91 @@ flask --app app run --debug
 - `GEMINI_MODEL` — модель Gemini, по умолчанию `gemini-3.8-flash`.
 - `GEMINI_FALLBACK_MODELS` — список резервных моделей через запятую; при временной перегрузке основная модель переключается на резервную.
 - `GEMINI_API_URL` — адрес Gemini API, обычно менять не нужно.
+
+## Развёртывание на Ubuntu Server
+
+Для production-запуска используются Nginx как reverse proxy и Gunicorn как WSGI-сервер. Можно установить их напрямую на Ubuntu Server или запустить приложение через Docker Compose.
+
+### Docker Compose
+
+Установите Docker Engine с Compose plugin. Направьте DNS-запись домена на сервер и откройте входящие порты 80 и 443. Скопируйте шаблон настроек:
+
+```bash
+cp .env.example .env
+```
+
+В `.env` укажите свой домен (`DOMAIN`), email для Let's Encrypt (`CERTBOT_EMAIL`), а также собственные значения `SECRET_KEY` и `ADMIN_PASSWORD`. Порты `HTTP_PORT` и `HTTPS_PORT` должны быть доступны извне (по умолчанию 80 и 443). Для генерации секрета Flask используйте `python3 -c 'import secrets; print(secrets.token_hex(32))'`.
+
+Сначала получите сертификат (порт 80 должен быть свободен):
+
+```bash
+docker compose run --rm --service-ports certbot
+```
+
+Затем запустите приложение и Nginx:
+
+```bash
+docker compose up -d --build
+```
+
+Сайт будет доступен по адресу `https://<ваш-домен>`. HTTP автоматически перенаправляется на HTTPS. SQLite-база и загруженные изображения хранятся в Docker volume `uust_news_data`, сертификаты — в `deploy/letsencrypt`; они сохраняются при пересоздании контейнеров. Для продления сертификата остановите Nginx, запустите `docker compose run --rm --service-ports certbot renew`, затем снова запустите Nginx:
+
+```bash
+docker compose stop nginx
+docker compose run --rm --service-ports certbot renew
+docker compose start nginx
+```
+
+Просмотр логов и остановка:
+
+```bash
+docker compose logs -f
+docker compose down
+```
+
+Не используйте `docker compose down -v`, если хотите сохранить базу и загруженные изображения.
+
+1. Установите системные пакеты и разместите проект в `/opt/uust-news`:
+
+	```bash
+	sudo apt update
+	sudo apt install nginx python3-venv
+	cd /opt/uust-news
+	python3 -m venv .venv
+	.venv/bin/pip install -r requirements.txt
+	sudo mkdir -p instance/uploads
+	sudo chown -R www-data:www-data instance
+	```
+
+2. Создайте `/etc/uust-news.env` на основе `deploy/uust-news.env.example`. Задайте уникальные `SECRET_KEY` и `ADMIN_PASSWORD` до первого запуска приложения; файл ограничьте правами `sudo chmod 600 /etc/uust-news.env`. Секрет можно сгенерировать командой `python3 -c 'import secrets; print(secrets.token_hex(32))'`. При необходимости добавьте `GEMINI_API_KEY`.
+
+3. Установите и запустите сервис приложения:
+
+	```bash
+	sudo cp deploy/systemd/uust-news.service /etc/systemd/system/uust-news.service
+	sudo systemctl daemon-reload
+	sudo systemctl enable --now uust-news
+	sudo systemctl status uust-news
+	```
+
+4. Скопируйте `deploy/nginx/uust-news.conf` в `/etc/nginx/sites-available/uust-news`, замените `example.com` на домен и включите сайт:
+
+	```bash
+	sudo ln -s /etc/nginx/sites-available/uust-news /etc/nginx/sites-enabled/uust-news
+	sudo nginx -t
+	sudo systemctl reload nginx
+	```
+
+	Укажите для домена IP сервера в DNS, затем получите HTTPS-сертификат:
+
+	```bash
+	sudo apt install certbot python3-certbot-nginx
+	sudo certbot --nginx -d example.com
+	```
+
+	Конфигурация уже выставляет лимит запроса выше допустимого размера загрузки и таймаут прокси для долгих запросов Gemini.
+
+Приложение слушает только `127.0.0.1:8000`; внешний доступ проходит через Nginx. База и загруженные изображения остаются в `/opt/uust-news/instance`, поэтому эту директорию нужно включить в резервное копирование. При обновлении кода после установки зависимостей перезапустите сервис: `sudo systemctl restart uust-news`. Для небольшой нагрузки SQLite подходит; при росте числа одновременных записей стоит отдельно перейти на серверную базу данных.
 
 Для включения ИИ-проверки получите ключ в [Google AI Studio](https://aistudio.google.com/app/apikey) и задайте его в окружении перед запуском:
 
