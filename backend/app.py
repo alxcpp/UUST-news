@@ -11,7 +11,7 @@ from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from flask import Flask, abort, flash, g, redirect, render_template, request, send_from_directory, session, url_for
+from flask import Flask, abort, flash, g, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from backend.uploads import ImageUploadError, save_uploaded_image
@@ -34,6 +34,7 @@ NEWS_CATEGORIES = (
     "Кампус",
     "Объявления",
 )
+INITIAL_ADMIN_EMAIL = "admin@uust.local"
 
 app = Flask(
     __name__,
@@ -99,6 +100,7 @@ def init_db():
             email TEXT NOT NULL UNIQUE COLLATE NOCASE,
             password_hash TEXT NOT NULL,
             role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'moderator', 'admin')),
+            is_banned INTEGER NOT NULL DEFAULT 0 CHECK (is_banned IN (0, 1)),
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         CREATE TABLE IF NOT EXISTS news (
@@ -151,6 +153,11 @@ def init_db():
             ON notifications (user_id, created_at DESC);
         """
     )
+    user_columns = {row[1] for row in db.execute("PRAGMA table_info(users)")}
+    if "is_banned" not in user_columns:
+        db.execute(
+            "ALTER TABLE users ADD COLUMN is_banned INTEGER NOT NULL DEFAULT 0 CHECK (is_banned IN (0, 1))"
+        )
     news_columns = {row[1] for row in db.execute("PRAGMA table_info(news)")}
     for column, definition in (
         ("content_type", "TEXT NOT NULL DEFAULT 'article' CHECK (content_type IN ('article', 'event'))"),
@@ -173,14 +180,13 @@ def init_db():
         if not isinstance(semantic, dict) or not semantic.get("corrected"):
             db.execute("UPDATE news SET grammar_result = '' WHERE id = ?", (row["id"],))
 
-    admin_email = "admin@uust.local"
-    admin = db.execute("SELECT id FROM users WHERE email = ?", (admin_email,)).fetchone()
+    admin = db.execute("SELECT id FROM users WHERE email = ?", (INITIAL_ADMIN_EMAIL,)).fetchone()
     if admin is None:
         cursor = db.execute(
             "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, 'admin')",
             (
                 "Администратор УУНиТ",
-                admin_email,
+                INITIAL_ADMIN_EMAIL,
                 generate_password_hash(os.environ.get("ADMIN_PASSWORD", "admin12345")),
             ),
         )
@@ -222,7 +228,12 @@ def init_db():
 def current_user():
     if "user" not in g:
         user_id = session.get("user_id")
-        g.user = get_db().execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone() if user_id else None
+        user = get_db().execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone() if user_id else None
+        if user and user["is_banned"]:
+            session.clear()
+            flash("Ваш аккаунт заблокирован. Обратитесь к администратору.", "error")
+            user = None
+        g.user = user
     return g.get("user")
 
 
@@ -645,6 +656,8 @@ def login():
         user = get_db().execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
         if user is None or not check_password_hash(user["password_hash"], password):
             flash("Неверный email или пароль.", "error")
+        elif user["is_banned"]:
+            flash("Ваш аккаунт заблокирован. Обратитесь к администратору.", "error")
         else:
             session.clear()
             session["user_id"] = user["id"]
@@ -798,6 +811,12 @@ def toggle_like(news_id):
     else:
         db.execute("INSERT INTO likes (user_id, news_id) VALUES (?, ?)", (current_user()["id"], news_id))
     db.commit()
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        like_count = db.execute(
+            "SELECT COUNT(*) FROM likes WHERE news_id = ?", (news_id,)
+        ).fetchone()[0]
+        liked = existing is None
+        return jsonify(liked=liked, like_count=like_count)
     return redirect(url_for("news_detail", news_id=news_id))
 
 
@@ -819,11 +838,32 @@ def add_comment(news_id):
     return redirect(url_for("news_detail", news_id=news_id) + "#comments")
 
 
+@app.post("/news/<int:news_id>/comments/<int:comment_id>/delete")
+@roles_required("moderator", "admin")
+def delete_comment(news_id, comment_id):
+    db = get_db()
+    cursor = db.execute(
+        """DELETE FROM comments
+           WHERE id = ? AND news_id = ?
+             AND EXISTS (
+                 SELECT 1 FROM news
+                 WHERE news.id = comments.news_id AND news.status = 'published'
+             )""",
+        (comment_id, news_id),
+    )
+    if not cursor.rowcount:
+        abort(404)
+    db.commit()
+    flash("Комментарий удалён.", "success")
+    return redirect(url_for("news_detail", news_id=news_id) + "#comments")
+
+
 @app.route("/moderation")
 @roles_required("moderator", "admin")
 def moderation():
     db = get_db()
     user_email = request.args.get("user_email", "").strip()
+    can_manage_admins = current_user()["email"].casefold() == INITIAL_ADMIN_EMAIL.casefold()
     pending = db.execute(
         """SELECT news.*, users.name AS author_name, users.email AS author_email
            FROM news JOIN users ON users.id = news.author_id
@@ -834,20 +874,25 @@ def moderation():
     if current_user()["role"] == "admin":
         if user_email:
             users = db.execute(
-                """SELECT id, name, email, role, created_at FROM users
+                """SELECT id, name, email, role, is_banned, created_at FROM users
                    WHERE id != ? AND email LIKE ? COLLATE NOCASE ORDER BY created_at DESC""",
                 (current_user()["id"], f"%{user_email}%"),
             ).fetchall()
         else:
             users = db.execute(
-                "SELECT id, name, email, role, created_at FROM users WHERE id != ? ORDER BY created_at DESC",
+                "SELECT id, name, email, role, is_banned, created_at FROM users WHERE id != ? ORDER BY created_at DESC",
                 (current_user()["id"],),
             ).fetchall()
         published = db.execute(
             "SELECT id, title, category, published_at FROM news WHERE status = 'published' ORDER BY published_at DESC"
         ).fetchall()
     return render_template(
-        "moderation.html", pending=pending, users=users, published=published, user_email=user_email
+        "moderation.html",
+        pending=pending,
+        users=users,
+        published=published,
+        user_email=user_email,
+        can_manage_admins=can_manage_admins,
     )
 
 
@@ -988,9 +1033,45 @@ def update_role(user_id):
         flash("Нельзя изменить собственную роль администратора.", "error")
         return redirect(url_for("moderation") + "#team")
     db = get_db()
+    target = db.execute("SELECT role FROM users WHERE id = ?", (user_id,)).fetchone()
+    if target is None:
+        flash("Пользователь не найден.", "error")
+        return redirect(url_for("moderation") + "#team")
+    is_initial_admin = current_user()["email"].casefold() == INITIAL_ADMIN_EMAIL.casefold()
+    if target["role"] == "admin" and not is_initial_admin:
+        abort(403)
+    if role == "admin" and not is_initial_admin:
+        abort(403)
     cursor = db.execute("UPDATE users SET role = ? WHERE id = ?", (role, user_id))
     db.commit()
-    flash("Роль пользователя обновлена." if cursor.rowcount else "Пользователь не найден.", "success")
+    if cursor.rowcount:
+        flash("Роль пользователя обновлена.", "success")
+    return redirect(url_for("moderation") + "#team")
+
+
+@app.post("/admin/users/<int:user_id>/ban")
+@roles_required("admin")
+def update_ban(user_id):
+    action = request.form.get("action")
+    if action not in {"ban", "unban"}:
+        abort(400)
+    db = get_db()
+    target = db.execute("SELECT role FROM users WHERE id = ?", (user_id,)).fetchone()
+    if target is None:
+        flash("Пользователь не найден.", "error")
+        return redirect(url_for("moderation") + "#team")
+    if target["role"] == "admin":
+        abort(403)
+    is_banned = int(action == "ban")
+    cursor = db.execute(
+        "UPDATE users SET is_banned = ? WHERE id = ? AND role != 'admin'",
+        (is_banned, user_id),
+    )
+    db.commit()
+    if cursor.rowcount:
+        flash("Пользователь заблокирован." if is_banned else "Пользователь разблокирован.", "success")
+    else:
+        abort(403)
     return redirect(url_for("moderation") + "#team")
 
 

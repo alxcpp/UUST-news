@@ -244,6 +244,8 @@ h1, h2, h3, p { margin-top: 0; }
 .like-button strong { align-self: end; font-family: var(--display); font-size: 19px; }
 .like-button small { align-self: start; color: var(--muted); font-size: 9px; }
 .like-button.liked { border-color: #d9c9f6; background: #f8f5ff; }
+.like-button:disabled { cursor: wait; opacity: .7; }
+.like-feedback { margin: 7px 0 0; color: #a54242; font-size: 10px; }
 .engagement-hint { margin-top: 13px; color: var(--muted); font-size: 10px; }
 .engagement-hint span { margin-right: 4px; color: var(--ink); font-weight: 800; }
 .comments-section { max-width: 720px; margin: 0 auto; padding-top: 4px; }
@@ -325,6 +327,7 @@ h1, h2, h3, p { margin-top: 0; }
 .user-table .member-name { color: var(--ink); font-weight: 700; }
 .role-pill { display: inline-block; padding: 4px 8px; color: #666; background: #f0efed; font-size: 9px; }
 .role-pill-moderator { color: #806018; background: #f6f0df; }
+.role-pill-banned { color: #a32d2d; background: #f8e8e6; }
 .role-form { display: flex; align-items: center; gap: 10px; }
 .role-form select { width: 125px; min-height: 31px; padding: 5px 7px; font-size: 10px; }
 .role-form .text-link { border: 0; background: transparent; }
@@ -397,6 +400,7 @@ html[data-theme="dark"] .published-row span,
 html[data-theme="dark"] .comment-meta time { color: var(--muted); }
 html[data-theme="dark"] .role-pill { color: var(--ink); background: #302b37; }
 html[data-theme="dark"] .role-pill-moderator { color: #d5c1ff; background: #372a4a; }
+html[data-theme="dark"] .role-pill-banned { color: #ffb7b0; background: #482a2a; }
 html[data-theme="dark"] .auth-switch,
 html[data-theme="dark"] .auth-footnote,
 html[data-theme="dark"] .dialog-actions > span,

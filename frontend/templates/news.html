@@ -15,10 +15,11 @@
     <div class="article-content">{% for paragraph in article['content'].split('\n\n') %}<p>{{ paragraph }}</p>{% endfor %}</div>
     <aside class="article-engagement">
       <p class="eyebrow">Обсуждение</p>
-      <form action="{{ url_for('toggle_like', news_id=article['id']) }}" method="post">
+      <form action="{{ url_for('toggle_like', news_id=article['id']) }}" method="post" data-like-form>
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button class="like-button {% if liked %}liked{% endif %}" type="submit" aria-label="{% if liked %}Убрать лайк{% else %}Поставить лайк{% endif %}"><span aria-hidden="true">{% if liked %}♥{% else %}♡{% endif %}</span><strong>{{ article['like_count'] }}</strong><small>{% if liked %}Вам нравится{% else %}Нравится{% endif %}</small></button>
       </form>
+      <p class="like-feedback" role="status" aria-live="polite" hidden></p>
       <div class="engagement-hint"><span>{{ comments|length }}</span> комментариев</div>
     </aside>
   </div>
@@ -36,7 +37,7 @@
     {% endif %}
     <div class="comment-list">
       {% for comment in comments %}
-        <article class="comment"><div class="comment-avatar">{{ comment['author_name'][:1]|upper }}</div><div class="comment-copy"><div class="comment-meta"><strong>{{ comment['author_name'] }}</strong><time>{{ comment['created_at']|date_ru }}</time></div><p>{{ comment['body'] }}</p></div></article>
+        <article class="comment"><div class="comment-avatar">{{ comment['author_name'][:1]|upper }}</div><div class="comment-copy"><div class="comment-meta"><strong>{{ comment['author_name'] }}</strong><time>{{ comment['created_at']|date_ru }}</time>{% if current_user and current_user['role'] in ('moderator', 'admin') %}<form class="inline-form" action="{{ url_for('delete_comment', news_id=article['id'], comment_id=comment['id']) }}" method="post" onsubmit="return confirm('Удалить этот комментарий?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="text-link danger-link" type="submit">Удалить</button></form>{% endif %}</div><p>{{ comment['body'] }}</p></div></article>
       {% else %}
         <p class="no-comments">Пока нет комментариев. Начните разговор.</p>
       {% endfor %}

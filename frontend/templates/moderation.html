@@ -73,8 +73,15 @@
       </form>
       <div class="user-table-wrap"><table class="user-table"><thead><tr><th>Пользователь</th><th>Email</th><th>Роль</th><th>Действие</th></tr></thead><tbody>
         {% for user in users %}
-          <tr><td class="member-name">{{ user['name'] }}</td><td>{{ user['email'] }}</td><td><span class="role-pill role-pill-{{ user['role'] }}">{{ {'user': 'Пользователь', 'moderator': 'Модератор', 'admin': 'Администратор'}[user['role']] }}</span></td><td>
-            <form class="role-form" action="{{ url_for('update_role', user_id=user['id']) }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><select name="role" aria-label="Роль для {{ user['name'] }}"><option value="user" {% if user['role'] == 'user' %}selected{% endif %}>Пользователь</option><option value="moderator" {% if user['role'] == 'moderator' %}selected{% endif %}>Модератор</option><option value="admin" {% if user['role'] == 'admin' %}selected{% endif %}>Администратор</option></select><button type="submit" class="text-link">Сохранить ↗</button></form>
+          <tr><td class="member-name">{{ user['name'] }}</td><td>{{ user['email'] }}</td><td><span class="role-pill role-pill-{{ user['role'] }}">{{ {'user': 'Пользователь', 'moderator': 'Модератор', 'admin': 'Администратор'}[user['role']] }}</span>{% if user['is_banned'] %} <span class="role-pill role-pill-banned">Заблокирован</span>{% endif %}</td><td>
+            {% if user['role'] != 'admin' or can_manage_admins %}
+              <form class="role-form" action="{{ url_for('update_role', user_id=user['id']) }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><select name="role" aria-label="Роль для {{ user['name'] }}"><option value="user" {% if user['role'] == 'user' %}selected{% endif %}>Пользователь</option><option value="moderator" {% if user['role'] == 'moderator' %}selected{% endif %}>Модератор</option>{% if can_manage_admins %}<option value="admin" {% if user['role'] == 'admin' %}selected{% endif %}>Администратор</option>{% endif %}</select><button type="submit" class="text-link">Сохранить ↗</button></form>
+            {% else %}
+              —
+            {% endif %}
+            {% if user['role'] != 'admin' %}
+              <form class="role-form" action="{{ url_for('update_ban', user_id=user['id']) }}" method="post" onsubmit="return confirm('{{ 'Разблокировать' if user['is_banned'] else 'Заблокировать' }} пользователя {{ user['name'] }}?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="{{ 'unban' if user['is_banned'] else 'ban' }}"><button type="submit" class="text-link{% if not user['is_banned'] %} danger-link{% endif %}">{{ 'Разблокировать' if user['is_banned'] else 'Заблокировать' }}</button></form>
+            {% endif %}
           </td></tr>
         {% else %}
           <tr><td colspan="4" class="table-empty">{% if user_email %}По этому email пользователей не найдено.{% else %}Пока нет зарегистрированных пользователей.{% endif %}</td></tr>
