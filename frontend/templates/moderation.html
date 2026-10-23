@@ -34,13 +34,15 @@
                 {% endfor %}
               </div>
               <p class="semantic-caveat">Фактические утверждения ИИ не сверяет с внешними источниками. Неоднозначные случаи, логику и этико-речевые риски обязательно оцените самостоятельно.</p>
+            {% elif semantic and semantic['status'] == 'processing' %}
+              <p class="semantic-unavailable">AI-проверка выполняется в фоне. Обновите страницу позже, чтобы увидеть результат.</p>
             {% else %}
-              <p class="semantic-unavailable">{% if not report %}AI-отчёт появится после отправки предложения.{% elif semantic and semantic.get('reason') == 'not_configured' %}Ключ Gemini API не настроен, поэтому отчёт и исправленный вариант не созданы.{% elif semantic and semantic.get('reason') == 'invalid_key' %}Gemini API отклонил ключ или доступ к модели.{% elif semantic and semantic.get('reason') == 'quota_exceeded' %}Исчерпан лимит запросов Gemini API.{% elif semantic and semantic.get('reason') == 'service_busy' %}Модели Gemini временно перегружены. Попробуйте повторить проверку позже.{% elif semantic and semantic.get('reason') == 'connection_error' %}Нет соединения с Gemini API.{% elif semantic and semantic.get('reason') == 'model_unavailable' %}Настроенные модели недоступны для этого ключа.{% else %}Gemini не вернул корректный ответ. Проверьте модель и настройки API.{% endif %}</p>
+              <p class="semantic-unavailable">{% if not report %}AI-отчёт появится после отправки предложения.{% elif semantic and semantic.get('reason') == 'not_configured' %}Ключ Gemini API не настроен, поэтому отчёт и исправленный вариант не созданы.{% elif semantic and semantic.get('reason') == 'invalid_key' %}Gemini API отклонил ключ или доступ к модели.{% elif semantic and semantic.get('reason') == 'quota_exceeded' %}Исчерпан лимит запросов Gemini API.{% elif semantic and semantic.get('reason') == 'service_busy' %}Модели Gemini временно перегружены. Попробуйте повторить проверку позже.{% elif semantic and semantic.get('reason') == 'connection_error' %}Нет соединения с Gemini API.{% elif semantic and semantic.get('reason') == 'model_unavailable' %}Настроенные модели недоступны для этого ключа.{% elif semantic and semantic.get('reason') == 'service_unavailable' %}Не удалось завершить AI-проверку из-за ошибки сервера.{% else %}Gemini не вернул корректный ответ. Проверьте модель и настройки API.{% endif %}</p>
             {% endif %}
           </section>
           {% if semantic and semantic['status'] == 'checked' and semantic.get('corrected') %}
             <section class="semantic-correction" aria-label="Исправленный вариант новости">
-              <div class="semantic-title"><strong>Исправленный вариант</strong><span>Создан при отправке</span></div>
+              <div class="semantic-title"><strong>Исправленный вариант</strong><span>Создан после AI-проверки</span></div>
               {% for field, label in [('title', 'Заголовок'), ('excerpt', 'Краткое описание'), ('content', 'Текст новости')] %}
                 <div class="semantic-corrected-field"><strong>{{ label }}</strong><p>{{ semantic['corrected'].get(field, item[field]) }}</p></div>
               {% endfor %}

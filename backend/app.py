@@ -3,6 +3,7 @@ import json
 import os
 import secrets
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from functools import wraps
 from pathlib import Path
@@ -14,6 +15,9 @@ from flask import Flask, abort, flash, g, redirect, render_template, request, se
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from backend.uploads import ImageUploadError, save_uploaded_image
+
+
+proposal_review_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="proposal-review")
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -473,6 +477,58 @@ def check_text(title, excerpt, content):
     return {"semantic": check_with_gemini(title, excerpt, content)}
 
 
+def review_proposal_in_background(news_id, title, excerpt, content):
+    grammar_result = check_text(title, excerpt, content)
+    with app.app_context():
+        db = get_db()
+        db.execute(
+            """UPDATE news SET grammar_result = ?
+               WHERE id = ? AND status IN ('pending', 'published')
+                     AND title = ? AND excerpt = ? AND content = ?""",
+            (
+                json.dumps(grammar_result, ensure_ascii=False),
+                news_id,
+                title,
+                excerpt,
+                content,
+            ),
+        )
+        db.commit()
+
+
+def record_proposal_review_failure(future, news_id, title, excerpt, content):
+    error = future.exception()
+    if error is None:
+        return
+
+    app.logger.error(
+        "Background AI review failed for proposal %s",
+        news_id,
+        exc_info=(type(error), error, error.__traceback__),
+    )
+    with app.app_context():
+        db = get_db()
+        try:
+            db.execute(
+                """UPDATE news SET grammar_result = ?
+                   WHERE id = ? AND status IN ('pending', 'published')
+                         AND title = ? AND excerpt = ? AND content = ?""",
+                (
+                    json.dumps(
+                        {"semantic": {"status": "unavailable", "reason": "service_unavailable"}},
+                        ensure_ascii=False,
+                    ),
+                    news_id,
+                    title,
+                    excerpt,
+                    content,
+                ),
+            )
+            db.commit()
+        except sqlite3.Error:
+            app.logger.exception("Could not save failed AI review state for proposal %s", news_id)
+
+
 @app.route("/")
 def index():
     db = get_db()
@@ -658,8 +714,8 @@ def submit_proposal():
             flash(str(error), "error")
             return redirect(url_for("index"))
         db = get_db()
-        grammar_result = check_text(title, excerpt, content)
-        db.execute(
+        grammar_result = {"semantic": {"status": "processing"}}
+        cursor = db.execute(
             """INSERT INTO news
                (title, excerpt, content, category, image_url, content_type, event_date, event_time, event_location, author_id, grammar_result)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
@@ -677,28 +733,18 @@ def submit_proposal():
                 json.dumps(grammar_result, ensure_ascii=False),
             ),
         )
+        news_id = cursor.lastrowid
         db.commit()
-        semantic = grammar_result["semantic"]
-        if semantic["status"] == "unavailable":
-            reason = semantic.get("reason")
-            messages = {
-                "not_configured": "Ключ Gemini API не настроен.",
-                "invalid_key": "Gemini API отклонил ключ или доступ к модели.",
-                "quota_exceeded": "Исчерпан лимит запросов Gemini API.",
-                "service_busy": "Модели Gemini временно перегружены. Попробуйте отправить новость ещё раз позже.",
-                "connection_error": "Нет соединения с Gemini API.",
-                "model_unavailable": "Настроенные модели Gemini недоступны для этого ключа.",
-            }
-            flash(f"Предложение сохранено без AI-проверки. {messages.get(reason, 'Проверьте доступность Gemini API.')}", "info")
-        elif any(
-            category["status"] in {"issues", "uncertain"} for category in semantic["categories"]
-        ):
-            flash(
-                "Предложение отправлено. Результаты проверки и исправленный вариант доступны в очереди модерации.",
-                "info",
-            )
-        else:
-            flash("Предложение отправлено. Результаты проверки и исправленный вариант доступны в очереди модерации.", "success")
+        future = proposal_review_executor.submit(
+            review_proposal_in_background, news_id, title, excerpt, content
+        )
+        future.add_done_callback(
+            lambda task: record_proposal_review_failure(task, news_id, title, excerpt, content)
+        )
+        flash(
+            "Предложение отправлено. AI-проверка выполняется в фоне; результаты появятся в очереди модерации.",
+            "success",
+        )
     return redirect(url_for("index"))
 
 

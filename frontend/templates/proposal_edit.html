@@ -45,6 +45,8 @@
         <div class="grammar-window-actions"><button class="button button-quiet" type="button" data-copy-all>Скопировать весь текст</button><button class="button button-red" type="button" data-apply-corrections>Подставить в форму</button></div>
       {% elif ai_review and ai_review['status'] == 'unavailable' %}
         <p class="grammar-window-note">{% if ai_review.get('reason') == 'not_configured' %}Исправленный вариант появится после настройки GEMINI_API_KEY в окружении приложения.{% elif ai_review.get('reason') == 'invalid_key' %}Gemini API отклонил ключ или доступ к модели.{% elif ai_review.get('reason') == 'quota_exceeded' %}Исчерпан лимит Gemini API; попробуйте позже.{% elif ai_review.get('reason') == 'service_busy' %}Модели Gemini перегружены; резервные варианты тоже временно недоступны. Попробуйте позже.{% elif ai_review.get('reason') == 'connection_error' %}Не удалось соединиться с Gemini API.{% else %}Gemini API не вернул корректный ответ. Проверьте настройки и повторите позже.{% endif %}</p>
+      {% elif ai_review and ai_review['status'] == 'processing' %}
+        <p class="grammar-window-note">AI-проверка ещё выполняется. Результат появится в очереди модерации после завершения.</p>
       {% else %}
         <p class="grammar-window-note">Для этого предложения исправленный вариант недоступен. Проверьте настройки Gemini API или отправьте предложение повторно после настройки ключа.</p>
       {% endif %}
