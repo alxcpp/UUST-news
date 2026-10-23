@@ -15,6 +15,6 @@ COPY --chown=app:app . .
 
 USER app
 
-EXPOSE 8000
+EXPOSE 80
 
 CMD ["gunicorn", "--preload", "--workers", "2", "--timeout", "75", "--bind", "0.0.0.0:8000", "--access-logfile", "-", "--error-logfile", "-", "app:app"]
